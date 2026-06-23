@@ -10,22 +10,9 @@
 [![Python](https://img.shields.io/pypi/pyversions/nxstate.svg)](https://pypi.org/project/nxstate/)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
-```console
-$ nxstate show "configure terminal" --host sw1 --json   # it cannot configure a switch
-error: refused non-read command: 'configure terminal' ('configure' is not a read command)
-  code: WRITE_REFUSED
-exit=11
+![nxstate demo](demo/nxstate.gif)
 
-$ nxstate schema | jq '{tool, read_only, safety}'        # self-describing + safety state
-{
-  "tool": "nxstate",
-  "read_only": true,
-  "safety": { "mutations": "none (WRITE_REFUSED on non-read input)", "allow_debug": false }
-}
-```
-
-<sub>An animated demo can be rendered from [`demo/nxstate.tape`](demo/nxstate.tape) with
-[`vhs`](https://github.com/charmbracelet/vhs): `vhs demo/nxstate.tape`.</sub>
+<sub>Demo rendered from [`demo/nxstate.tape`](demo/nxstate.tape) via [vhs](https://github.com/charmbracelet/vhs).</sub>
 
 ## Why nxstate
 
