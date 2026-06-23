@@ -2,11 +2,32 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import starlightLlmsTxt from 'starlight-llms-txt';
+import { visit } from 'unist-util-visit';
+
+const BASE = '/nxstate';
+
+// Starlight base-prefixes its own nav + assets, but NOT hand-written absolute links in Markdown
+// content. This rehype plugin prefixes internal `/...` links with the base so cross-links work
+// on a GitHub Pages project site — while keeping source links clean/portable (`/guides/x/`).
+function rehypeBaseLinks() {
+	return (/** @type {any} */ tree) => {
+		visit(tree, 'element', (/** @type {any} */ node) => {
+			if (node.tagName !== 'a') return;
+			const href = node.properties?.href;
+			if (typeof href !== 'string') return;
+			if (href.startsWith('/') && !href.startsWith('//') && !href.startsWith(BASE + '/') && href !== BASE) {
+				node.properties.href = BASE + href;
+			}
+		});
+	};
+}
 
 // https://astro.build/config
 export default defineConfig({
-	// Canonical deploy URL — REQUIRED for correct llms.txt + sitemap links.
-	site: 'https://docs.nxstate.labs.rwolfe.io',
+	// GitHub Pages project site — REQUIRED for correct llms.txt + sitemap + asset links.
+	site: 'https://rnwolfe.github.io',
+	base: BASE,
+	markdown: { rehypePlugins: [rehypeBaseLinks] },
 
 	integrations: [
 		starlight({
