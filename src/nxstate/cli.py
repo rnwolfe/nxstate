@@ -647,6 +647,42 @@ def auth_login(ctx, **_):
     rt.out.emit({"ok": True, "stored_for": f"{s['username']}@{s['host']}"})
 
 
+@auth.command("logout")
+@global_options
+@click.pass_context
+def auth_logout(ctx, **_):
+    """Remove one device's stored credential from the OS keyring (local only)."""
+    rt = make_runtime(ctx)
+    tgts = rt.targets()
+    if len(tgts) != 1:
+        raise AppError(
+            ExitCode.USAGE,
+            "ONE_DEVICE",
+            "auth logout targets exactly one device",
+            "pass a single --host or --device",
+        )
+    s = tgts[0].settings
+    if not s["username"]:
+        raise input_required("--username")
+    handle = f"{s['username']}@{s['host']}"
+    removed = False
+    try:
+        import keyring
+
+        if keyring.get_password("nxstate", handle) is not None:
+            keyring.delete_password("nxstate", handle)
+            removed = True
+    except Exception as e:
+        raise AppError(
+            ExitCode.CONFIG,
+            "KEYRING_UNAVAILABLE",
+            f"could not access the keyring: {e}",
+            "no keyring backend available",
+        )
+    # Removes local credentials only; it does not affect the device account.
+    rt.out.emit({"ok": True, "removed": removed, "handle": handle})
+
+
 @cli.command()
 @global_options
 @click.pass_context

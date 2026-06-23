@@ -208,3 +208,14 @@ def test_flag_after_subcommand_position(capsys):
     # Global flags must work in any position (the kong-parity requirement).
     code = run(["system", "version", "--host", "sw1", "--format", "tsv"])
     assert code == 0
+
+
+def test_auth_logout_no_entry(capsys, monkeypatch):
+    import keyring
+
+    monkeypatch.setattr(keyring, "get_password", lambda *a, **k: None)
+    code = run(["auth", "logout", "--host", "sw1", "-u", "netops", "--json"])
+    out = capsys.readouterr().out
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["ok"] is True and payload["removed"] is False

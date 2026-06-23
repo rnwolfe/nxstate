@@ -18,6 +18,6 @@ All notable changes to this project are documented here. The format is based on
 - Inventory (`~/.config/nxstate/inventory.yaml`, defaults←groups←host) and concurrent
   multi-device fan-out (`--device`/`--group`/`--all`, NDJSON per device, partial-exit 15).
 - Credential resolution: flag → inventory → env → default; password via stdin/env/keyring
-  (never argv); keyring storage via `auth login`; `doctor`.
+  (never argv); keyring storage via `auth login` / removal via `auth logout`; `doctor`.
 
 [Unreleased]: https://github.com/rnwolfe/nxstate/commits/main
