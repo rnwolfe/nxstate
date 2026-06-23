@@ -7,6 +7,7 @@ show/debug passthrough refuses non-read input (WRITE_REFUSED)."""
 
 from __future__ import annotations
 
+import concurrent.futures
 import difflib
 import json
 import os
@@ -17,9 +18,11 @@ import click
 
 from . import __version__
 from .client import NexusClient, first_rows, normalize_nxos
-from .errors import (AppError, ExitCode, auth_required, debug_blocked, exit_table,
-                     host_required, input_required, not_found)
-from .output import Writer
+from .errors import (AppError, ExitCode, debug_blocked, exit_table, host_required,
+                     input_required)
+from .inventory import Target, load_inventory
+from .inventory import resolve as resolve_targets
+from .output import Writer, shape
 from .safety import assert_read_command
 from .skill import content as skill_content
 from .wrap import fence
@@ -28,7 +31,8 @@ _active: "Runtime | None" = None
 
 _GLOBAL_KEYS = ["fmt", "as_json", "no_color", "no_input", "limit", "select", "concise",
                 "detailed", "host", "port", "username", "transport", "timeout", "insecure",
-                "password_stdin", "allow_debug", "allow_tech"]
+                "password_stdin", "allow_debug", "allow_tech",
+                "devices", "groups", "all_targets", "inventory", "workers"]
 
 
 def global_options(f):
@@ -56,6 +60,13 @@ def global_options(f):
         # safety gates for heavy / control-plane reads
         click.option("--allow-debug", is_flag=True, default=None, help="Permit control-plane-impacting debug reads."),
         click.option("--allow-tech", is_flag=True, default=None, help="Permit slow show tech-support."),
+        # inventory / fan-out
+        click.option("--device", "devices", multiple=True,
+                     help="Inventory host(s) by name or glob (repeatable). Fan-out if >1 matches."),
+        click.option("--group", "groups", multiple=True, help="Inventory group(s) (repeatable)."),
+        click.option("--all", "all_targets", is_flag=True, default=None, help="Target every inventory host."),
+        click.option("--inventory", default=None, help="Inventory file path (default: ~/.config/nxstate/inventory.yaml)."),
+        click.option("--workers", type=int, default=None, help="Max concurrent devices for fan-out (default 10)."),
     ]
     for o in reversed(opts):
         f = o(f)
@@ -67,46 +78,78 @@ class Runtime:
     fmt: str
     no_input: bool
     out: Writer
+    # connection overrides (None = unset; resolved per target via flag → inventory → env → default)
     host: str | None
     port: int | None
     username: str | None
-    transport: str
-    timeout: int
-    insecure: bool
+    transport: str | None
+    timeout: int | None
+    insecure: bool | None
     password_stdin: bool
     allow_debug: bool
     allow_tech: bool
+    # inventory / fan-out
+    devices: tuple
+    groups: tuple
+    all_targets: bool
+    inventory: str | None
+    workers: int
 
-    def require_host(self) -> str:
-        if not self.host:
+    # ---- target resolution -------------------------------------------------
+
+    @property
+    def use_inventory(self) -> bool:
+        return bool(self.devices or self.groups or self.all_targets)
+
+    def _finalize(self, name: str, base: dict) -> Target:
+        def pick(key, flagval, envvar=None, default=None):
+            if flagval is not None:
+                return flagval
+            if base.get(key) is not None:
+                return base[key]
+            if envvar and os.environ.get(envvar):
+                return os.environ[envvar]
+            return default
+        return Target(name, {
+            "host": pick("host", self.host, "NXSTATE_HOST"),
+            "username": pick("username", self.username, "NXSTATE_USERNAME"),
+            "transport": pick("transport", self.transport, "NXSTATE_TRANSPORT", "auto"),
+            "port": pick("port", self.port, "NXSTATE_PORT"),
+            "insecure": self.insecure if self.insecure is not None else bool(base.get("insecure")),
+            "timeout": self.timeout if self.timeout is not None else int(base.get("timeout") or 30),
+        })
+
+    def targets(self) -> list[Target]:
+        if self.use_inventory:
+            inv = load_inventory(self.inventory)
+            return [self._finalize(t.name, t.settings)
+                    for t in resolve_targets(inv, self.devices, self.groups, self.all_targets)]
+        t = self._finalize(self.host or os.environ.get("NXSTATE_HOST") or "", {})
+        if not t.settings["host"]:
             raise host_required()
-        return self.host
+        return [t]
 
-    def _password(self) -> str | None:
-        # Resolution order (never via argv — contract §7): --password-stdin → env → OS keyring.
-        if self.password_stdin:
-            return sys.stdin.readline().rstrip("\n")
-        if pw := os.environ.get("NXSTATE_PASSWORD"):
-            return pw
-        if self.host and self.username:
-            try:
-                import keyring
-                return keyring.get_password("nxstate", f"{self.username}@{self.host}")
-            except Exception:
-                return None
-        return None
+    def client_for(self, t: Target) -> NexusClient:
+        s = t.settings
+        pw = _password_for(s["host"], s["username"], self.password_stdin)
+        return NexusClient(host=s["host"], username=s["username"], password=pw, port=s["port"],
+                           transport=s["transport"], timeout=s["timeout"], insecure=s["insecure"])
 
-    def client(self) -> NexusClient:
-        self.require_host()
-        return NexusClient(host=self.host, username=self.username, password=self._password(),
-                           port=self.port, transport=self.transport, timeout=self.timeout,
-                           insecure=self.insecure)
+    # ---- emit --------------------------------------------------------------
+
+    def _payload(self, result: dict, rows: bool):
+        """Return (value, is_raw_text) for a run_show result, normalized and projected."""
+        parsed, raw = result.get("parsed"), result.get("raw")
+        if parsed is not None:
+            data = first_rows(parsed) if rows else normalize_nxos(parsed)
+            return data, False
+        if raw is not None:
+            return {"raw": raw, "untrusted": True}, True
+        return {"result": None, "parser": result.get("parser", "none")}, False
 
     def emit_result(self, command: str, parsed, raw, parser: str, rows: bool = False) -> None:
-        """Emit a show result. Parsed/structured data goes through the Writer so
-        --select/--limit/--format apply. List-style commands extract the primary ROW_ table
-        (rows=True); others normalize NX-OS TABLE_/ROW_ wrappers in place. Raw free text is
-        fenced as untrusted (contract §8)."""
+        """Single-device emit through the Writer (--select/--limit/--format apply); raw free
+        text is fenced as untrusted (contract §8)."""
         if parsed is not None:
             self.out.emit(first_rows(parsed) if rows else normalize_nxos(parsed))
         elif raw is not None:
@@ -119,8 +162,54 @@ class Runtime:
             self.out.emit({"command": command, "parser": parser, "result": None})
 
     def show(self, command: str, rows: bool = False) -> None:
-        r = self.client().run_show(command)
-        self.emit_result(r["command"], r.get("parsed"), r.get("raw"), r.get("parser", "none"), rows)
+        tgts = self.targets()
+        if len(tgts) == 1:
+            r = self.client_for(tgts[0]).run_show(command)
+            self.emit_result(r["command"], r.get("parsed"), r.get("raw"),
+                             r.get("parser", "none"), rows)
+            return
+        self.fanout(tgts, command, rows)
+
+    def fanout(self, tgts: list[Target], command: str, rows: bool) -> None:
+        """Run `command` across multiple devices concurrently, streaming one NDJSON object per
+        device as it completes, with per-device error isolation. Exits PARTIAL if any failed."""
+        def work(t: Target) -> dict:
+            try:
+                r = self.client_for(t).run_show(command)
+                value, is_raw = self._payload(r, rows)
+                if not is_raw:
+                    value = shape(value, self.out.select, self.out.limit)
+                return {"device": t.name, "host": t.settings["host"], "ok": True, "data": value}
+            except AppError as e:
+                return {"device": t.name, "host": t.settings["host"], "ok": False,
+                        "error": {"code": e.code, "message": e.message, "remediation": e.remediation}}
+            except Exception as e:  # never let one device kill the run
+                return {"device": t.name, "host": t.settings["host"], "ok": False,
+                        "error": {"code": "INTERNAL", "message": str(e)}}
+
+        failures = 0
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.workers) as ex:
+            for fut in concurrent.futures.as_completed([ex.submit(work, t) for t in tgts]):
+                res = fut.result()
+                failures += 0 if res["ok"] else 1
+                print(json.dumps(res, ensure_ascii=False), file=self.out.stdout, flush=True)
+        if failures:
+            raise click.exceptions.Exit(ExitCode.PARTIAL)
+
+
+def _password_for(host: str | None, username: str | None, password_stdin: bool) -> str | None:
+    # Resolution order (never via argv — contract §7): --password-stdin → env → OS keyring.
+    if password_stdin:
+        return sys.stdin.readline().rstrip("\n")
+    if pw := os.environ.get("NXSTATE_PASSWORD"):
+        return pw
+    if host and username:
+        try:
+            import keyring
+            return keyring.get_password("nxstate", f"{username}@{host}")
+        except Exception:
+            return None
+    return None
 
 
 def _resolve(ctx) -> dict:
@@ -128,8 +217,9 @@ def _resolve(ctx) -> dict:
     c = ctx
     while c is not None:
         for k in _GLOBAL_KEYS:
-            if vals[k] is None and c.params.get(k) is not None:
-                vals[k] = c.params[k]
+            v = c.params.get(k)
+            if vals[k] is None and v is not None and v != () and v != "":
+                vals[k] = v
         c = c.parent
     return vals
 
@@ -143,11 +233,12 @@ def make_runtime(ctx) -> Runtime:
     limit = v["limit"] if v["limit"] is not None else 50
     out = Writer(fmt=fmt, color=color, limit=limit, select=sel)
     _active = Runtime(
-        fmt=fmt, no_input=bool(v["no_input"]), out=out, host=v["host"], port=v["port"],
-        username=v["username"], transport=v["transport"] or "auto",
-        timeout=v["timeout"] if v["timeout"] is not None else 30, insecure=bool(v["insecure"]),
-        password_stdin=bool(v["password_stdin"]), allow_debug=bool(v["allow_debug"]),
-        allow_tech=bool(v["allow_tech"]),
+        fmt=fmt, no_input=bool(v["no_input"]), out=out,
+        host=v["host"], port=v["port"], username=v["username"], transport=v["transport"],
+        timeout=v["timeout"], insecure=v["insecure"], password_stdin=bool(v["password_stdin"]),
+        allow_debug=bool(v["allow_debug"]), allow_tech=bool(v["allow_tech"]),
+        devices=v["devices"] or (), groups=v["groups"] or (), all_targets=bool(v["all_targets"]),
+        inventory=v["inventory"], workers=v["workers"] or 10,
     )
     return _active
 
@@ -345,8 +436,7 @@ def debug_cmd(ctx, command, **_):
     if not rt.allow_debug:
         raise debug_blocked(command)
     rt.out.info("warning: debug commands load the supervisor CPU; keep captures short")
-    r = rt.client().run_show(f"debug {command}")
-    rt.emit_result(r["command"], r.get("parsed"), r.get("raw"), r.get("parser", "none"))
+    rt.show(f"debug {command}")
 
 
 @cli.command("tech-support")
@@ -373,24 +463,40 @@ def auth():
 @global_options
 @click.pass_context
 def auth_status(ctx, **_):
-    """Report whether credentials are present for the target."""
+    """Report whether credentials are present for the target(s)."""
     rt = make_runtime(ctx)
-    have_pw = bool(rt.password_stdin or os.environ.get("NXSTATE_PASSWORD"))
-    rt.out.emit({"host": rt.host, "username": rt.username, "transport": rt.transport,
-                 "credential_present": have_pw,
-                 "note": "credentials are read from NXSTATE_PASSWORD / --password-stdin / keyring (never argv)"})
+
+    def info_for(t: Target) -> dict:
+        s = t.settings
+        have = rt.password_stdin or bool(_password_for(s["host"], s["username"], False))
+        return {"device": t.name, "host": s["host"], "username": s["username"],
+                "transport": s["transport"], "credential_present": have}
+
+    tgts = rt.targets()
+    if len(tgts) == 1:
+        d = info_for(tgts[0])
+        d.pop("device")
+        d["note"] = "credentials read from NXSTATE_PASSWORD / --password-stdin / keyring (never argv)"
+        rt.out.emit(d)
+    else:
+        for t in tgts:
+            print(json.dumps(info_for(t), ensure_ascii=False), file=rt.out.stdout)
 
 
 @auth.command("login")
 @global_options
 @click.pass_context
 def auth_login(ctx, **_):
-    """Store the target's password in the OS keyring (keyed by user@host)."""
+    """Store one device's password in the OS keyring (keyed by user@host)."""
     rt = make_runtime(ctx)
-    rt.require_host()
-    if not rt.username:
+    tgts = rt.targets()
+    if len(tgts) != 1:
+        raise AppError(ExitCode.USAGE, "ONE_DEVICE", "auth login targets exactly one device",
+                       "pass a single --host or --device")
+    s = tgts[0].settings
+    if not s["username"]:
         raise input_required("--username")
-    pw = rt._password()
+    pw = _password_for(s["host"], s["username"], rt.password_stdin)
     if not pw:
         if rt.no_input:
             raise input_required("password (set NXSTATE_PASSWORD or --password-stdin)")
@@ -398,38 +504,51 @@ def auth_login(ctx, **_):
         pw = getpass.getpass("NX-OS password: ")
     try:
         import keyring
-        keyring.set_password("nxstate", f"{rt.username}@{rt.host}", pw)
+        keyring.set_password("nxstate", f"{s['username']}@{s['host']}", pw)
     except Exception as e:
         raise AppError(ExitCode.CONFIG, "KEYRING_UNAVAILABLE", f"could not store credential: {e}",
                        "use NXSTATE_PASSWORD / --password-stdin instead, or install a keyring backend")
-    rt.out.emit({"ok": True, "stored_for": f"{rt.username}@{rt.host}"})
+    rt.out.emit({"ok": True, "stored_for": f"{s['username']}@{s['host']}"})
 
 
 @cli.command()
 @global_options
 @click.pass_context
 def doctor(ctx, **_):
-    """Diagnose reachability, transport, and credentials for the target."""
+    """Diagnose reachability, transport, and credentials for the target(s)."""
     rt = make_runtime(ctx)
-    host_ok = bool(rt.host)
-    cred_ok = bool(rt.username and rt._password())
-    checks = [
-        {"name": "host", "ok": host_ok, "detail": rt.host or "no --host provided"},
-        {"name": "credentials", "ok": cred_ok,
-         "detail": "present" if cred_ok else "set --username + NXSTATE_PASSWORD (or nxstate auth login)"},
-    ]
-    if host_ok and cred_ok:
-        try:
-            ok, detail = rt.client().reachable()
-        except AppError as e:
-            ok, detail = False, e.message
-        checks.append({"name": f"reachable ({rt.transport})", "ok": ok, "detail": detail})
-    else:
-        checks.append({"name": "reachable", "ok": False, "detail": "skipped (need host + credentials)"})
 
-    all_ok = all(c["ok"] for c in checks)
-    rt.out.emit({"ok": all_ok, "checks": checks})
-    if not all_ok:
+    def diagnose(t: Target) -> tuple[bool, list[dict]]:
+        s = t.settings
+        cred_ok = bool(s["username"]) and bool(_password_for(s["host"], s["username"], rt.password_stdin))
+        checks = [
+            {"name": "host", "ok": bool(s["host"]), "detail": s["host"] or "no host"},
+            {"name": "credentials", "ok": cred_ok,
+             "detail": "present" if cred_ok else "set --username + NXSTATE_PASSWORD (or nxstate auth login)"},
+        ]
+        if s["host"] and cred_ok:
+            try:
+                ok, detail = rt.client_for(t).reachable()
+            except AppError as e:
+                ok, detail = False, e.message
+            checks.append({"name": f"reachable ({s['transport']})", "ok": ok, "detail": detail})
+        else:
+            checks.append({"name": "reachable", "ok": False, "detail": "skipped (need host + credentials)"})
+        return all(c["ok"] for c in checks), checks
+
+    tgts = rt.targets()
+    any_fail = False
+    if len(tgts) == 1:
+        ok, checks = diagnose(tgts[0])
+        any_fail = not ok
+        rt.out.emit({"ok": ok, "checks": checks})
+    else:
+        for t in tgts:
+            ok, checks = diagnose(t)
+            any_fail = any_fail or not ok
+            print(json.dumps({"device": t.name, "ok": ok, "checks": checks}, ensure_ascii=False),
+                  file=rt.out.stdout, flush=True)
+    if any_fail:
         raise click.exceptions.Exit(ExitCode.UNREACHABLE)
 
 
@@ -472,8 +591,10 @@ def version(ctx, **_):
 
 def run(argv: list[str] | None = None) -> int:
     try:
-        cli.main(args=argv, standalone_mode=False)
-        return ExitCode.OK
+        # With standalone_mode=False, Click *returns* the code from ctx.exit()/Exit (e.g. our
+        # doctor/partial exits, --help, --version) rather than raising it — so honor the return.
+        rv = cli.main(args=argv, standalone_mode=False)
+        return rv if isinstance(rv, int) else ExitCode.OK
     except (click.exceptions.Exit, SystemExit) as e:
         code = getattr(e, "exit_code", getattr(e, "code", 0))
         return int(code or 0)

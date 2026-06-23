@@ -71,6 +71,17 @@ class Writer:
                 print(sep.join(r), file=self.stdout)
 
 
+def shape(value: Any, select: list[str], limit: int) -> Any:
+    """Apply --select projection and --limit to a value and return it (no printing).
+    Used for per-device fan-out payloads."""
+    g = json.loads(json.dumps(value, default=str))
+    if select:
+        g = _apply_select(g, select)
+    if limit and limit > 0 and isinstance(g, list) and len(g) > limit:
+        g = g[:limit]
+    return g
+
+
 def _apply_select(g: Any, sel: list[str]) -> Any:
     if isinstance(g, list):
         return [_select_obj(e, sel) for e in g]

@@ -9,12 +9,25 @@ is refused (`WRITE_REFUSED`). "No `conf t`" is the product boundary, not a flag.
 
 ## Quickstart
 ```bash
-export NXSTATE_PASSWORD=...                 # never pass the password on argv
-nxstate doctor --host SW1 --username admin  # verify reachability + creds
-nxstate system version --host SW1 --json
-nxstate interface list --host SW1 --format tsv
-nxstate show "show ip ospf neighbors" --host SW1   # generic read passthrough
+# Resolution is flag → inventory → env → default, so export defaults once:
+export NXSTATE_HOST=SW1 NXSTATE_USERNAME=admin NXSTATE_PASSWORD=...   # password never on argv
+nxstate doctor                              # verify reachability + creds
+nxstate system version --json
+nxstate interface list --format tsv
+nxstate show "show ip ospf neighbors"       # generic read passthrough (non-read → WRITE_REFUSED)
 ```
+
+## Inventory & fan-out
+Define hosts/groups in `~/.config/nxstate/inventory.yaml` (see `docs/inventory.example.yaml`) —
+`defaults` ← `groups` ← `host`, **no secrets in the file**. Then poll many devices at once:
+```bash
+nxstate interface list --device leaf1        # one host → clean output
+nxstate interface list --group datacenter    # many → concurrent, NDJSON per device
+nxstate system version --all --select nxos_ver_str
+```
+Fan-out streams one JSON object per device (`{device, host, ok, data|error}`), isolates
+per-device failures, and exits `15` if any device failed. Credentials per host come from
+`NXSTATE_PASSWORD` / the OS keyring (`nxstate auth login --host leaf1 -u admin`).
 
 ## Why it's safe for agents
 - **Read-only by design** — no mutating commands exist; the `show`/`debug` passthrough refuses

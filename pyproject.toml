@@ -12,6 +12,7 @@ dependencies = [
     "ntc-templates>=4.0",   # TextFSM parser fallback
     "textfsm>=1.1",
     "keyring>=24",          # OS keyring credential storage
+    "pyyaml>=6",            # inventory file parsing
 ]
 
 [project.optional-dependencies]

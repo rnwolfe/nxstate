@@ -21,6 +21,7 @@ class ExitCode:
     WRITE_REFUSED = 11
     INPUT_REQUIRED = 13
     PARSE_UNAVAILABLE = 14
+    PARTIAL = 15
     CANCELLED = 130
 
 
@@ -40,6 +41,7 @@ def exit_table() -> dict[str, int]:
         "write_refused": ExitCode.WRITE_REFUSED,
         "input_required": ExitCode.INPUT_REQUIRED,
         "parse_unavailable": ExitCode.PARSE_UNAVAILABLE,
+        "partial": ExitCode.PARTIAL,
         "cancelled": ExitCode.CANCELLED,
     }
 

@@ -1,0 +1,25 @@
+# nxstate inventory — copy to ~/.config/nxstate/inventory.yaml (or pass --inventory PATH).
+# Resolution: defaults <- groups <- host (host wins). NO SECRETS HERE — passwords come from
+# NXSTATE_PASSWORD / --password-stdin / the OS keyring (per host, via `nxstate auth login`).
+
+defaults:
+  username: netops
+  transport: auto        # auto | ssh | nxapi
+
+groups:
+  datacenter:
+    transport: nxapi
+    insecure: true        # self-signed NX-API certs
+  edge: {}
+
+hosts:
+  leaf1:
+    host: 10.1.1.11
+    groups: [datacenter]
+  leaf2:
+    host: 10.1.1.12
+    groups: [datacenter]
+  edge1:
+    host: edge1.example.net
+    groups: [edge]
+    username: edge-ro      # host-level override
