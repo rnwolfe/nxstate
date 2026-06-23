@@ -1,0 +1,27 @@
+[project]
+name = "nxstate"
+version = "0.0.1"
+description = "Agent-friendly, read-only Cisco Nexus (NX-OS) state-gathering CLI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["cisco", "nexus", "nx-os", "cli", "network-automation", "read-only", "agent"]
+# Scaffold deps are intentionally minimal. cli-implement adds the real client/parsers:
+#   scrapli (core cisco_nxos), ntc-templates, and an optional [genie] extra (heavy).
+dependencies = ["click>=8.1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+# implement-stage (added by cli-implement):
+# net = ["scrapli>=2025.1", "ntc-templates>=9"]
+# genie = ["pyats[library]>=24"]
+
+[project.scripts]
+nxstate = "nxstate.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nxstate"]
