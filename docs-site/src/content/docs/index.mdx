@@ -1,40 +1,123 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
-hero:
-  tagline: Congrats on setting up a new Starlight project!
-  image:
-    file: ../../assets/houston.webp
-  actions:
-    - text: Example Guide
-      link: /guides/example/
-      icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
-      icon: external
-      variant: minimal
+title: nxstate
+description: A read-only Cisco Nexus (NX-OS) state-gathering CLI that delivers clean, structured JSON for network engineers and their coding agents.
+owner: rnwolfe
+lastReviewed: 2026-06-23
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+nxstate runs `show` commands on Cisco Nexus switches and returns clean, structured JSON. It is built for two audiences: **network engineers** who want scriptable, filterable device state without writing glue code, and **coding agents** that need a safe, self-describing interface to inspect a Nexus fleet without any risk of changing a device.
 
-## Next steps
+## Read-only by design
 
-<CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
-	</Card>
-	<Card title="Change page layout" icon="document">
-		Delete `template: splash` in `src/content/docs/index.mdx` to display a
-		sidebar on this page.
-	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
-	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
-	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
-	</Card>
-</CardGrid>
+nxstate cannot configure a switch. This is a product boundary, not a runtime flag.
+
+Any input that is not a `show` command — `conf t`, `write`, `reload`, `clear`, and [dozens of other mutating leaders](/concepts/read-only-safety/) — is rejected **before a connection is opened**, with a structured `WRITE_REFUSED` error and exit code `11`. There is no `--allow-mutations` flag. "No `conf t`" is the entire point.
+
+```bash
+$ nxstate show "configure terminal"
+error: refused non-read command: 'configure terminal' ('configure' is not a read command)
+  code: WRITE_REFUSED
+  fix:  nxstate is read-only; only 'show ...' commands are permitted (no conf t / mutations)
+```
+
+This makes nxstate safe to hand to an autonomous agent pointed at a production fleet.
+
+## Key capabilities
+
+**Structured output everywhere.** NX-OS returns `{"TABLE_intf": {"ROW_intf": [...]}}` wrappers; nxstate normalizes them to plain arrays. Choose your format: `--format json|plain|tsv`, project specific fields with `--select`, and bound large tables with `--limit`.
+
+**Curated command surface.** Common state is a single sub-command away: `interface list`, `vlan list`, `bgp summary`, `route list`, `neighbor list`, `arp list`, `mac list`, `system version`, and more. All return parsed, stable JSON — not screen-scraped text.
+
+**Generic read passthrough.** Any `show` command the curated surface doesn't cover is available via `nxstate show "<cmd>"`. nxstate runs the command, tries every parser it knows (Genie → ntc-templates → raw text), and returns structured output wherever possible.
+
+**Self-describing for agents.** `nxstate schema` emits the full command tree, exit-code table, and live safety state as machine-readable JSON — no docs required. `nxstate agent` prints the embedded usage guide that tells an LLM exactly how to drive the tool.
+
+**Inventory-driven fleet fan-out.** Define hosts and groups once in `~/.config/nxstate/inventory.yaml`. Target one device, a glob, a group, or the whole fleet with `--device`, `--group`, or `--all`. Multi-device runs execute concurrently (default 10 workers), stream NDJSON as results arrive, isolate per-device failures, and exit `15` (partial) if any device fails — one bad switch does not abort the run.
+
+**Prompt-injection fencing.** Device free-text — interface descriptions, neighbor names, log messages, banners — is attacker-influenceable. nxstate wraps all such content in `BEGIN/END UNTRUSTED DEVICE OUTPUT` markers and sets `"untrusted": true` in the JSON envelope so an LLM agent won't follow instructions embedded in the output.
+
+**Credential safety.** Passwords are never accepted on the command line. Resolution order: `--password-stdin` → `NXSTATE_PASSWORD` env var → OS keyring (`nxstate auth login`) → interactive prompt (TTY only). Env vars cover the rest: `NXSTATE_HOST`, `NXSTATE_USERNAME`, `NXSTATE_TRANSPORT`, `NXSTATE_PORT`.
+
+**Dual transport.** Default `--transport auto` probes NX-API first (fast HTTP POST to `/ins`), then falls back to SSH via scrapli. Force one with `--transport ssh|nxapi`. NX-API with a self-signed cert needs `--insecure` on trusted networks.
+
+## A quick taste
+
+```bash
+# Set credentials once; nxstate resolves flag → inventory → env → default
+export NXSTATE_HOST=leaf1
+export NXSTATE_USERNAME=netops
+export NXSTATE_PASSWORD=...          # never on argv
+
+# Verify connectivity and credentials before doing anything else
+nxstate doctor
+
+# Structured JSON for the version string only
+nxstate system version --select nxos_ver_str --json
+
+# Interface list as TSV — paste into a spreadsheet
+nxstate interface list --format tsv
+
+# BGP summary for a specific VRF
+nxstate bgp summary --vrf prod --json
+
+# Any 'show' command you need; Genie parses it if a parser exists
+nxstate show "show ip ospf neighbors detail"
+
+# Fan-out: all devices in the 'datacenter' group, concurrently
+nxstate interface list --group datacenter
+```
+
+Example single-device output:
+
+```json
+[
+  {
+    "interface": "Ethernet1/1",
+    "state": "up",
+    "ip_address": "10.0.0.1/30",
+    "speed": "1000"
+  }
+]
+```
+
+Example fan-out NDJSON (one line per device as it completes):
+
+```json
+{"device": "leaf1", "host": "10.1.1.11", "ok": true, "data": [...]}
+{"device": "leaf2", "host": "10.1.1.12", "ok": true, "data": [...]}
+```
+
+## Install
+
+```bash
+# Zero-install trial — runs straight from PyPI, nothing to uninstall
+uvx nxstate --help
+
+# For repeated use — installs the `nxstate` binary
+uv tool install nxstate
+
+# Standard pip
+pip install nxstate
+
+# Maximum parser coverage — adds Genie's ~293 NX-OS parsers
+uv tool install "nxstate[genie]"
+```
+
+Requires Python 3.10 or later. Licensed MIT OR Apache-2.0.
+
+## Where to go next
+
+- [Installation](/getting-started/installation/) — system requirements, install methods, verifying your setup
+- [Quickstart](/getting-started/quickstart/) — connect to your first switch in under five minutes
+- [Read-only safety](/concepts/read-only-safety/) — how `WRITE_REFUSED` works and why there is no override
+- [Transports and parsing](/concepts/transports-and-parsing/) — SSH vs NX-API, the Genie → ntc-templates → raw pipeline
+- [Authentication](/guides/authentication/) — keyring, env vars, `--password-stdin`, RBAC
+- [Inventory and fan-out](/guides/inventory-and-fanout/) — defining hosts and groups, concurrent fleet runs
+- [Output and filtering](/guides/output-and-filtering/) — `--format`, `--select`, `--limit`, NDJSON
+- [Gathering state](/guides/gathering-state/) — a command-by-command reference with example outputs
+- [Troubleshooting](/guides/troubleshooting/) — `doctor`, common errors, exit codes
+- [Command reference](/reference/commands/) — every sub-command and its flags
+- [Global flags](/reference/global-flags/) — flags available on every command
+- [Exit codes](/reference/exit-codes/) — the full table with names and meanings
+- [Inventory schema](/reference/inventory-schema/) — `hosts`, `groups`, `defaults` format
+- [Environment variables](/reference/environment-variables/) — all recognized env vars

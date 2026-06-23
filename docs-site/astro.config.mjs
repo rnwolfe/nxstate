@@ -28,11 +28,14 @@ export default defineConfig({
 					label: 'Start here',
 					items: [
 						{ label: 'Introduction', slug: 'index' },
+						{ label: 'Installation', slug: 'getting-started/installation' },
 						{ label: 'Quickstart', slug: 'getting-started/quickstart' },
 					],
 				},
+				{ label: 'Concepts', items: [{ autogenerate: { directory: 'concepts' } }] },
 				{ label: 'Guides', items: [{ autogenerate: { directory: 'guides' } }] },
 				{ label: 'Reference', items: [{ autogenerate: { directory: 'reference' } }] },
+				{ label: 'Contributing', slug: 'contributing' },
 			],
 			plugins: [
 				starlightLlmsTxt({
