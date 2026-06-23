@@ -20,11 +20,15 @@ jobs:
           fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          cache-dependency-glob: "**/pyproject.toml"
       - name: Build sdist + wheel
         run: uv build
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - name: Attest build provenance
+        # Build provenance attestations require a public repo (unavailable on private user repos).
+        if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: "dist/*.whl, dist/*.tar.gz"
