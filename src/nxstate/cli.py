@@ -18,8 +18,7 @@ import click
 
 from . import __version__
 from .client import NexusClient, first_rows, normalize_nxos
-from .errors import (AppError, ExitCode, debug_blocked, exit_table, host_required,
-                     input_required)
+from .errors import AppError, ExitCode, debug_blocked, exit_table, host_required, input_required
 from .inventory import Target, load_inventory
 from .inventory import resolve as resolve_targets
 from .output import Writer, shape
@@ -27,46 +26,114 @@ from .safety import assert_read_command
 from .skill import content as skill_content
 from .wrap import fence
 
-_active: "Runtime | None" = None
+_active: Runtime | None = None
 
-_GLOBAL_KEYS = ["fmt", "as_json", "no_color", "no_input", "limit", "select", "concise",
-                "detailed", "host", "port", "username", "transport", "timeout", "insecure",
-                "password_stdin", "allow_debug", "allow_tech",
-                "devices", "groups", "all_targets", "inventory", "workers"]
+_GLOBAL_KEYS = [
+    "fmt",
+    "as_json",
+    "no_color",
+    "no_input",
+    "limit",
+    "select",
+    "concise",
+    "detailed",
+    "host",
+    "port",
+    "username",
+    "transport",
+    "timeout",
+    "insecure",
+    "password_stdin",
+    "allow_debug",
+    "allow_tech",
+    "devices",
+    "groups",
+    "all_targets",
+    "inventory",
+    "workers",
+]
 
 
 def global_options(f):
     """Attach the universal contract flags + Nexus connection flags to a command."""
     opts = [
         # output (contract §1, §6)
-        click.option("--format", "fmt", type=click.Choice(["json", "plain", "tsv"]),
-                     default=None, help="Output format: json, plain, or tsv."),
-        click.option("--json", "as_json", is_flag=True, default=None, help="Shorthand for --format=json."),
+        click.option(
+            "--format",
+            "fmt",
+            type=click.Choice(["json", "plain", "tsv"]),
+            default=None,
+            help="Output format: json, plain, or tsv.",
+        ),
+        click.option(
+            "--json", "as_json", is_flag=True, default=None, help="Shorthand for --format=json."
+        ),
         click.option("--no-color", is_flag=True, default=None, help="Disable colored output."),
-        click.option("--no-input", is_flag=True, default=None, help="Never prompt; fail with exit 13."),
-        click.option("--limit", type=int, default=None, help="Max rows for list operations (default 50)."),
+        click.option(
+            "--no-input", is_flag=True, default=None, help="Never prompt; fail with exit 13."
+        ),
+        click.option(
+            "--limit", type=int, default=None, help="Max rows for list operations (default 50)."
+        ),
         click.option("--select", default=None, help="Comma-separated dot-path field projection."),
         click.option("--concise", is_flag=True, default=None, help="Terser output (default)."),
         click.option("--detailed", is_flag=True, default=None, help="Richer output."),
         # connection
         click.option("--host", default=None, help="Target switch hostname/IP."),
-        click.option("--port", type=int, default=None, help="Transport port (default per transport)."),
+        click.option(
+            "--port", type=int, default=None, help="Transport port (default per transport)."
+        ),
         click.option("--username", "-u", default=None, help="Login username (read-only role)."),
-        click.option("--transport", type=click.Choice(["ssh", "nxapi", "auto"]), default=None,
-                     help="Access method (default: auto — probe NX-API, fall back to SSH)."),
-        click.option("--timeout", type=int, default=None, help="Per-command timeout seconds (default 30)."),
-        click.option("--insecure", is_flag=True, default=None, help="Skip TLS verify for NX-API self-signed certs."),
-        click.option("--password-stdin", is_flag=True, default=None, help="Read the password from stdin."),
+        click.option(
+            "--transport",
+            type=click.Choice(["ssh", "nxapi", "auto"]),
+            default=None,
+            help="Access method (default: auto — probe NX-API, fall back to SSH).",
+        ),
+        click.option(
+            "--timeout", type=int, default=None, help="Per-command timeout seconds (default 30)."
+        ),
+        click.option(
+            "--insecure",
+            is_flag=True,
+            default=None,
+            help="Skip TLS verify for NX-API self-signed certs.",
+        ),
+        click.option(
+            "--password-stdin", is_flag=True, default=None, help="Read the password from stdin."
+        ),
         # safety gates for heavy / control-plane reads
-        click.option("--allow-debug", is_flag=True, default=None, help="Permit control-plane-impacting debug reads."),
-        click.option("--allow-tech", is_flag=True, default=None, help="Permit slow show tech-support."),
+        click.option(
+            "--allow-debug",
+            is_flag=True,
+            default=None,
+            help="Permit control-plane-impacting debug reads.",
+        ),
+        click.option(
+            "--allow-tech", is_flag=True, default=None, help="Permit slow show tech-support."
+        ),
         # inventory / fan-out
-        click.option("--device", "devices", multiple=True,
-                     help="Inventory host(s) by name or glob (repeatable). Fan-out if >1 matches."),
+        click.option(
+            "--device",
+            "devices",
+            multiple=True,
+            help="Inventory host(s) by name or glob (repeatable). Fan-out if >1 matches.",
+        ),
         click.option("--group", "groups", multiple=True, help="Inventory group(s) (repeatable)."),
-        click.option("--all", "all_targets", is_flag=True, default=None, help="Target every inventory host."),
-        click.option("--inventory", default=None, help="Inventory file path (default: ~/.config/nxstate/inventory.yaml)."),
-        click.option("--workers", type=int, default=None, help="Max concurrent devices for fan-out (default 10)."),
+        click.option(
+            "--all", "all_targets", is_flag=True, default=None, help="Target every inventory host."
+        ),
+        click.option(
+            "--inventory",
+            default=None,
+            help="Inventory file path (default: ~/.config/nxstate/inventory.yaml).",
+        ),
+        click.option(
+            "--workers",
+            type=int,
+            default=None,
+            help="Max concurrent devices for fan-out (default 10).",
+        ),
     ]
     for o in reversed(opts):
         f = o(f)
@@ -110,20 +177,30 @@ class Runtime:
             if envvar and os.environ.get(envvar):
                 return os.environ[envvar]
             return default
-        return Target(name, {
-            "host": pick("host", self.host, "NXSTATE_HOST"),
-            "username": pick("username", self.username, "NXSTATE_USERNAME"),
-            "transport": pick("transport", self.transport, "NXSTATE_TRANSPORT", "auto"),
-            "port": pick("port", self.port, "NXSTATE_PORT"),
-            "insecure": self.insecure if self.insecure is not None else bool(base.get("insecure")),
-            "timeout": self.timeout if self.timeout is not None else int(base.get("timeout") or 30),
-        })
+
+        return Target(
+            name,
+            {
+                "host": pick("host", self.host, "NXSTATE_HOST"),
+                "username": pick("username", self.username, "NXSTATE_USERNAME"),
+                "transport": pick("transport", self.transport, "NXSTATE_TRANSPORT", "auto"),
+                "port": pick("port", self.port, "NXSTATE_PORT"),
+                "insecure": self.insecure
+                if self.insecure is not None
+                else bool(base.get("insecure")),
+                "timeout": self.timeout
+                if self.timeout is not None
+                else int(base.get("timeout") or 30),
+            },
+        )
 
     def targets(self) -> list[Target]:
         if self.use_inventory:
             inv = load_inventory(self.inventory)
-            return [self._finalize(t.name, t.settings)
-                    for t in resolve_targets(inv, self.devices, self.groups, self.all_targets)]
+            return [
+                self._finalize(t.name, t.settings)
+                for t in resolve_targets(inv, self.devices, self.groups, self.all_targets)
+            ]
         t = self._finalize(self.host or os.environ.get("NXSTATE_HOST") or "", {})
         if not t.settings["host"]:
             raise host_required()
@@ -132,8 +209,15 @@ class Runtime:
     def client_for(self, t: Target) -> NexusClient:
         s = t.settings
         pw = _password_for(s["host"], s["username"], self.password_stdin)
-        return NexusClient(host=s["host"], username=s["username"], password=pw, port=s["port"],
-                           transport=s["transport"], timeout=s["timeout"], insecure=s["insecure"])
+        return NexusClient(
+            host=s["host"],
+            username=s["username"],
+            password=pw,
+            port=s["port"],
+            transport=s["transport"],
+            timeout=s["timeout"],
+            insecure=s["insecure"],
+        )
 
     # ---- emit --------------------------------------------------------------
 
@@ -154,8 +238,9 @@ class Runtime:
             self.out.emit(first_rows(parsed) if rows else normalize_nxos(parsed))
         elif raw is not None:
             if self.fmt == "json":
-                self.out.emit_json({"command": command, "parser": parser, "raw": raw,
-                                    "untrusted": True})
+                self.out.emit_json(
+                    {"command": command, "parser": parser, "raw": raw, "untrusted": True}
+                )
             else:
                 print(fence(raw), file=self.out.stdout)
         else:
@@ -165,14 +250,16 @@ class Runtime:
         tgts = self.targets()
         if len(tgts) == 1:
             r = self.client_for(tgts[0]).run_show(command)
-            self.emit_result(r["command"], r.get("parsed"), r.get("raw"),
-                             r.get("parser", "none"), rows)
+            self.emit_result(
+                r["command"], r.get("parsed"), r.get("raw"), r.get("parser", "none"), rows
+            )
             return
         self.fanout(tgts, command, rows)
 
     def fanout(self, tgts: list[Target], command: str, rows: bool) -> None:
         """Run `command` across multiple devices concurrently, streaming one NDJSON object per
         device as it completes, with per-device error isolation. Exits PARTIAL if any failed."""
+
         def work(t: Target) -> dict:
             try:
                 r = self.client_for(t).run_show(command)
@@ -181,11 +268,19 @@ class Runtime:
                     value = shape(value, self.out.select, self.out.limit)
                 return {"device": t.name, "host": t.settings["host"], "ok": True, "data": value}
             except AppError as e:
-                return {"device": t.name, "host": t.settings["host"], "ok": False,
-                        "error": {"code": e.code, "message": e.message, "remediation": e.remediation}}
+                return {
+                    "device": t.name,
+                    "host": t.settings["host"],
+                    "ok": False,
+                    "error": {"code": e.code, "message": e.message, "remediation": e.remediation},
+                }
             except Exception as e:  # never let one device kill the run
-                return {"device": t.name, "host": t.settings["host"], "ok": False,
-                        "error": {"code": "INTERNAL", "message": str(e)}}
+                return {
+                    "device": t.name,
+                    "host": t.settings["host"],
+                    "ok": False,
+                    "error": {"code": "INTERNAL", "message": str(e)},
+                }
 
         failures = 0
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.workers) as ex:
@@ -206,6 +301,7 @@ def _password_for(host: str | None, username: str | None, password_stdin: bool) 
     if host and username:
         try:
             import keyring
+
             return keyring.get_password("nxstate", f"{username}@{host}")
         except Exception:
             return None
@@ -233,12 +329,23 @@ def make_runtime(ctx) -> Runtime:
     limit = v["limit"] if v["limit"] is not None else 50
     out = Writer(fmt=fmt, color=color, limit=limit, select=sel)
     _active = Runtime(
-        fmt=fmt, no_input=bool(v["no_input"]), out=out,
-        host=v["host"], port=v["port"], username=v["username"], transport=v["transport"],
-        timeout=v["timeout"], insecure=v["insecure"], password_stdin=bool(v["password_stdin"]),
-        allow_debug=bool(v["allow_debug"]), allow_tech=bool(v["allow_tech"]),
-        devices=v["devices"] or (), groups=v["groups"] or (), all_targets=bool(v["all_targets"]),
-        inventory=v["inventory"], workers=v["workers"] or 10,
+        fmt=fmt,
+        no_input=bool(v["no_input"]),
+        out=out,
+        host=v["host"],
+        port=v["port"],
+        username=v["username"],
+        transport=v["transport"],
+        timeout=v["timeout"],
+        insecure=v["insecure"],
+        password_stdin=bool(v["password_stdin"]),
+        allow_debug=bool(v["allow_debug"]),
+        allow_tech=bool(v["allow_tech"]),
+        devices=v["devices"] or (),
+        groups=v["groups"] or (),
+        all_targets=bool(v["all_targets"]),
+        inventory=v["inventory"],
+        workers=v["workers"] or 10,
     )
     return _active
 
@@ -263,6 +370,7 @@ def cli(ctx, **_):
 
 
 # --- curated state commands (each maps to a `show`, Genie-parsed by cli-implement) ----------
+
 
 @cli.group()
 def system():
@@ -363,7 +471,9 @@ def bgp():
 @click.pass_context
 def bgp_summary(ctx, vrf, **_):
     """show ip bgp summary [vrf <vrf>]"""
-    make_runtime(ctx).show(f"show ip bgp summary vrf {vrf}" if vrf else "show ip bgp summary", rows=True)
+    make_runtime(ctx).show(
+        f"show ip bgp summary vrf {vrf}" if vrf else "show ip bgp summary", rows=True
+    )
 
 
 @cli.group()
@@ -372,7 +482,9 @@ def neighbor():
 
 
 @neighbor.command("list")
-@click.option("--protocol", type=click.Choice(["cdp", "lldp"]), default="lldp", help="Discovery protocol.")
+@click.option(
+    "--protocol", type=click.Choice(["cdp", "lldp"]), default="lldp", help="Discovery protocol."
+)
 @global_options
 @click.pass_context
 def neighbor_list(ctx, protocol, **_):
@@ -416,13 +528,16 @@ def logging_show(ctx, **_):
 
 # --- generic read passthrough + gated heavy reads -------------------------------------------
 
+
 @cli.command("show")
 @click.argument("command")
 @global_options
 @click.pass_context
 def show_passthrough(ctx, command, **_):
     """Run an arbitrary read command: nxstate show "show ip ospf neighbors". Non-read input is refused."""
-    assert_read_command(command)  # validate the RAW input — never auto-prepend (that would bypass the gate)
+    assert_read_command(
+        command
+    )  # validate the RAW input — never auto-prepend (that would bypass the gate)
     make_runtime(ctx).show(command)
 
 
@@ -446,13 +561,17 @@ def tech_support(ctx, **_):
     """show tech-support (huge/slow; gated by --allow-tech)."""
     rt = make_runtime(ctx)
     if not rt.allow_tech:
-        raise AppError(ExitCode.PERM, "TECH_BLOCKED",
-                       "show tech-support is large and slow and is gated",
-                       "re-run with --allow-tech (expect a long, text-only capture)")
+        raise AppError(
+            ExitCode.PERM,
+            "TECH_BLOCKED",
+            "show tech-support is large and slow and is gated",
+            "re-run with --allow-tech (expect a long, text-only capture)",
+        )
     rt.show("show tech-support")
 
 
 # --- auth / doctor / schema / agent / version -----------------------------------------------
+
 
 @cli.group()
 def auth():
@@ -469,14 +588,21 @@ def auth_status(ctx, **_):
     def info_for(t: Target) -> dict:
         s = t.settings
         have = rt.password_stdin or bool(_password_for(s["host"], s["username"], False))
-        return {"device": t.name, "host": s["host"], "username": s["username"],
-                "transport": s["transport"], "credential_present": have}
+        return {
+            "device": t.name,
+            "host": s["host"],
+            "username": s["username"],
+            "transport": s["transport"],
+            "credential_present": have,
+        }
 
     tgts = rt.targets()
     if len(tgts) == 1:
         d = info_for(tgts[0])
         d.pop("device")
-        d["note"] = "credentials read from NXSTATE_PASSWORD / --password-stdin / keyring (never argv)"
+        d["note"] = (
+            "credentials read from NXSTATE_PASSWORD / --password-stdin / keyring (never argv)"
+        )
         rt.out.emit(d)
     else:
         for t in tgts:
@@ -491,8 +617,12 @@ def auth_login(ctx, **_):
     rt = make_runtime(ctx)
     tgts = rt.targets()
     if len(tgts) != 1:
-        raise AppError(ExitCode.USAGE, "ONE_DEVICE", "auth login targets exactly one device",
-                       "pass a single --host or --device")
+        raise AppError(
+            ExitCode.USAGE,
+            "ONE_DEVICE",
+            "auth login targets exactly one device",
+            "pass a single --host or --device",
+        )
     s = tgts[0].settings
     if not s["username"]:
         raise input_required("--username")
@@ -501,13 +631,19 @@ def auth_login(ctx, **_):
         if rt.no_input:
             raise input_required("password (set NXSTATE_PASSWORD or --password-stdin)")
         import getpass
+
         pw = getpass.getpass("NX-OS password: ")
     try:
         import keyring
+
         keyring.set_password("nxstate", f"{s['username']}@{s['host']}", pw)
     except Exception as e:
-        raise AppError(ExitCode.CONFIG, "KEYRING_UNAVAILABLE", f"could not store credential: {e}",
-                       "use NXSTATE_PASSWORD / --password-stdin instead, or install a keyring backend")
+        raise AppError(
+            ExitCode.CONFIG,
+            "KEYRING_UNAVAILABLE",
+            f"could not store credential: {e}",
+            "use NXSTATE_PASSWORD / --password-stdin instead, or install a keyring backend",
+        )
     rt.out.emit({"ok": True, "stored_for": f"{s['username']}@{s['host']}"})
 
 
@@ -520,11 +656,18 @@ def doctor(ctx, **_):
 
     def diagnose(t: Target) -> tuple[bool, list[dict]]:
         s = t.settings
-        cred_ok = bool(s["username"]) and bool(_password_for(s["host"], s["username"], rt.password_stdin))
+        cred_ok = bool(s["username"]) and bool(
+            _password_for(s["host"], s["username"], rt.password_stdin)
+        )
         checks = [
             {"name": "host", "ok": bool(s["host"]), "detail": s["host"] or "no host"},
-            {"name": "credentials", "ok": cred_ok,
-             "detail": "present" if cred_ok else "set --username + NXSTATE_PASSWORD (or nxstate auth login)"},
+            {
+                "name": "credentials",
+                "ok": cred_ok,
+                "detail": "present"
+                if cred_ok
+                else "set --username + NXSTATE_PASSWORD (or nxstate auth login)",
+            },
         ]
         if s["host"] and cred_ok:
             try:
@@ -533,7 +676,9 @@ def doctor(ctx, **_):
                 ok, detail = False, e.message
             checks.append({"name": f"reachable ({s['transport']})", "ok": ok, "detail": detail})
         else:
-            checks.append({"name": "reachable", "ok": False, "detail": "skipped (need host + credentials)"})
+            checks.append(
+                {"name": "reachable", "ok": False, "detail": "skipped (need host + credentials)"}
+            )
         return all(c["ok"] for c in checks), checks
 
     tgts = rt.targets()
@@ -546,8 +691,11 @@ def doctor(ctx, **_):
         for t in tgts:
             ok, checks = diagnose(t)
             any_fail = any_fail or not ok
-            print(json.dumps({"device": t.name, "ok": ok, "checks": checks}, ensure_ascii=False),
-                  file=rt.out.stdout, flush=True)
+            print(
+                json.dumps({"device": t.name, "ok": ok, "checks": checks}, ensure_ascii=False),
+                file=rt.out.stdout,
+                flush=True,
+            )
     if any_fail:
         raise click.exceptions.Exit(ExitCode.UNREACHABLE)
 
@@ -559,16 +707,22 @@ def schema(ctx, **_):
     """Print the machine-readable command schema (JSON)."""
     rt = make_runtime(ctx)
     info = cli.to_info_dict(click.Context(cli, info_name="nxstate"))
-    rt.out.emit_json({
-        "tool": "nxstate",
-        "version": __version__,
-        "read_only": True,
-        "commands": info,
-        "exit_codes": exit_table(),
-        "safety": {"read_only": True, "mutations": "none (WRITE_REFUSED on non-read input)",
-                   "allow_debug": rt.allow_debug, "allow_tech": rt.allow_tech,
-                   "no_input": rt.no_input},
-    })
+    rt.out.emit_json(
+        {
+            "tool": "nxstate",
+            "version": __version__,
+            "read_only": True,
+            "commands": info,
+            "exit_codes": exit_table(),
+            "safety": {
+                "read_only": True,
+                "mutations": "none (WRITE_REFUSED on non-read input)",
+                "allow_debug": rt.allow_debug,
+                "allow_tech": rt.allow_tech,
+                "no_input": rt.no_input,
+            },
+        }
+    )
 
 
 @cli.command()
@@ -588,6 +742,7 @@ def version(ctx, **_):
 
 
 # --- entry / exit mapping -------------------------------------------------------------------
+
 
 def run(argv: list[str] | None = None) -> int:
     try:
@@ -610,8 +765,13 @@ def run(argv: list[str] | None = None) -> int:
 
 def _emit_error(e: AppError) -> None:
     if _active is not None and _active.fmt == "json":
-        print(json.dumps({"error": e.message, "code": e.code, "remediation": e.remediation},
-                         ensure_ascii=False), file=sys.stderr)
+        print(
+            json.dumps(
+                {"error": e.message, "code": e.code, "remediation": e.remediation},
+                ensure_ascii=False,
+            ),
+            file=sys.stderr,
+        )
     else:
         print(f"error: {e.message}", file=sys.stderr)
         if e.code:

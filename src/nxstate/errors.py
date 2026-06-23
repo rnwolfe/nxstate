@@ -59,7 +59,8 @@ class AppError(Exception):
 
 def write_refused(command: str, reason: str) -> AppError:
     return AppError(
-        ExitCode.WRITE_REFUSED, "WRITE_REFUSED",
+        ExitCode.WRITE_REFUSED,
+        "WRITE_REFUSED",
         f"refused non-read command: {command!r} ({reason})",
         "nxstate is read-only; only 'show ...' commands are permitted (no conf t / mutations)",
     )
@@ -67,7 +68,8 @@ def write_refused(command: str, reason: str) -> AppError:
 
 def debug_blocked(command: str) -> AppError:
     return AppError(
-        ExitCode.PERM, "DEBUG_BLOCKED",
+        ExitCode.PERM,
+        "DEBUG_BLOCKED",
         f"debug command {command!r} is control-plane-impacting and is gated",
         "re-run with --allow-debug if you accept the control-plane load",
     )
@@ -75,34 +77,44 @@ def debug_blocked(command: str) -> AppError:
 
 def host_required() -> AppError:
     return AppError(
-        ExitCode.USAGE, "HOST_REQUIRED", "no target switch given",
+        ExitCode.USAGE,
+        "HOST_REQUIRED",
+        "no target switch given",
         "pass --host <switch> (and credentials via --username + NXSTATE_PASSWORD / --password-stdin)",
     )
 
 
 def unreachable(host: str, detail: str) -> AppError:
     return AppError(
-        ExitCode.UNREACHABLE, "UNREACHABLE", f"{host} is not reachable: {detail}",
+        ExitCode.UNREACHABLE,
+        "UNREACHABLE",
+        f"{host} is not reachable: {detail}",
         "check connectivity, --transport, --port, and credentials (nxstate doctor --host ...)",
     )
 
 
 def auth_required(detail: str) -> AppError:
     return AppError(
-        ExitCode.AUTH, "AUTH_REQUIRED", f"authentication failed: {detail}",
+        ExitCode.AUTH,
+        "AUTH_REQUIRED",
+        f"authentication failed: {detail}",
         "run: nxstate auth login --host <switch> --username <user>",
     )
 
 
 def not_found(kind: str, ident: str) -> AppError:
     return AppError(
-        ExitCode.NOT_FOUND, "NOT_FOUND", f"{kind} {ident} not found",
+        ExitCode.NOT_FOUND,
+        "NOT_FOUND",
+        f"{kind} {ident} not found",
         f"list available {kind}s to find a valid name",
     )
 
 
 def input_required(what: str) -> AppError:
     return AppError(
-        ExitCode.INPUT_REQUIRED, "INPUT_REQUIRED", f"{what} is required",
+        ExitCode.INPUT_REQUIRED,
+        "INPUT_REQUIRED",
+        f"{what} is required",
         "pass it as a flag/argument (running with --no-input, so prompts are disabled)",
     )

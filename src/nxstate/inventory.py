@@ -32,9 +32,14 @@ def default_inventory_path() -> Path:
 def load_inventory(path: str | None) -> dict:
     p = Path(path) if path else default_inventory_path()
     if not p.exists():
-        raise AppError(ExitCode.CONFIG, "NO_INVENTORY", f"inventory not found: {p}",
-                       "create it (defaults/groups/hosts YAML) or pass --inventory PATH")
+        raise AppError(
+            ExitCode.CONFIG,
+            "NO_INVENTORY",
+            f"inventory not found: {p}",
+            "create it (defaults/groups/hosts YAML) or pass --inventory PATH",
+        )
     import yaml
+
     return yaml.safe_load(p.read_text()) or {}
 
 
@@ -56,13 +61,21 @@ def resolve(inv: dict, devices: tuple, groups: tuple, all_: bool) -> list[Target
     for g in groups or ():
         members = {n: hd for n, hd in hosts.items() if g in (hd.get("groups") or [])}
         if not members:
-            raise AppError(ExitCode.NOT_FOUND, "GROUP_NOT_FOUND", f"no hosts in group {g!r}",
-                           "check group names in the inventory")
+            raise AppError(
+                ExitCode.NOT_FOUND,
+                "GROUP_NOT_FOUND",
+                f"no hosts in group {g!r}",
+                "check group names in the inventory",
+            )
         chosen.update(members)
     for pat in devices or ():
         matched = {n: hd for n, hd in hosts.items() if fnmatch.fnmatch(n, pat)}
         if not matched:
-            raise AppError(ExitCode.NOT_FOUND, "DEVICE_NOT_FOUND",
-                           f"no inventory host matches {pat!r}", "check device names / globs")
+            raise AppError(
+                ExitCode.NOT_FOUND,
+                "DEVICE_NOT_FOUND",
+                f"no inventory host matches {pat!r}",
+                "check device names / globs",
+            )
         chosen.update(matched)
     return [Target(name=n, settings=_effective(inv, n, chosen[n])) for n in sorted(chosen)]

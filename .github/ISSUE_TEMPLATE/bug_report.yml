@@ -1,0 +1,53 @@
+name: Bug report
+description: Report something that doesn't work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! **Do not include passwords or credentials.** Redact hostnames if
+        sensitive, and rotate any credential you may have exposed. Security issues → see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: nxstate version
+      description: Output of `nxstate version`
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Linux, macOS, Windows, Other]
+    validations:
+      required: true
+  - type: input
+    id: nxos
+    attributes:
+      label: NX-OS version / platform
+      placeholder: "Nexus 9000v, 10.3(8)"
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options: [auto, ssh, nxapi]
+  - type: textarea
+    id: repro
+    attributes:
+      label: Command and steps to reproduce
+      description: The exact command (with secrets removed).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output / logs (redacted)
+      render: shell

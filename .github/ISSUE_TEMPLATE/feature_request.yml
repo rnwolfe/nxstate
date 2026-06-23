@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a new read-only command or capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        nxstate is **read-only by design** — it will not gain configuration/mutation features.
+        Requests for new `show`/state capabilities are very welcome.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to learn from the device(s)?
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Relevant NX-OS show command(s)
+      placeholder: "show ip ospf neighbors"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context

@@ -8,8 +8,14 @@ from nxstate.cli import run
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     monkeypatch.setenv("NO_COLOR", "1")
-    for var in ("NXSTATE_PASSWORD", "NXSTATE_HOST", "NXSTATE_USERNAME",
-                "NXSTATE_TRANSPORT", "NXSTATE_PORT", "NXSTATE_INVENTORY"):
+    for var in (
+        "NXSTATE_PASSWORD",
+        "NXSTATE_HOST",
+        "NXSTATE_USERNAME",
+        "NXSTATE_TRANSPORT",
+        "NXSTATE_PORT",
+        "NXSTATE_INVENTORY",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -31,8 +37,12 @@ def offline(monkeypatch):
     from nxstate import client as clientmod
 
     def fake_run_show(self, command, parse=True):
-        return {"command": command, "parsed": None,
-                "raw": f"<stub {command} on {self.host}>", "parser": "text"}
+        return {
+            "command": command,
+            "parsed": None,
+            "raw": f"<stub {command} on {self.host}>",
+            "parser": "text",
+        }
 
     monkeypatch.setattr(clientmod.NexusClient, "run_show", fake_run_show)
 
@@ -108,12 +118,27 @@ def test_did_you_mean(capsys):
 def test_parsed_output_normalized_with_select_limit(capsys, monkeypatch):
     # Parsed NX-OS TABLE_/ROW_ data is normalized to a clean array and --select/--limit apply.
     from nxstate import client as clientmod
-    table = {"TABLE_interface": {"ROW_interface": [
-        {"interface": f"Eth1/{i}", "state": "down", "vlan": "1"} for i in range(1, 11)]}}
-    monkeypatch.setattr(clientmod.NexusClient, "run_show",
-                        lambda self, command, parse=True: {"command": command, "parsed": table,
-                                                           "raw": None, "parser": "json"})
-    code = run(["interface", "list", "--host", "sw1", "--json", "--limit", "3", "--select", "interface"])
+
+    table = {
+        "TABLE_interface": {
+            "ROW_interface": [
+                {"interface": f"Eth1/{i}", "state": "down", "vlan": "1"} for i in range(1, 11)
+            ]
+        }
+    }
+    monkeypatch.setattr(
+        clientmod.NexusClient,
+        "run_show",
+        lambda self, command, parse=True: {
+            "command": command,
+            "parsed": table,
+            "raw": None,
+            "parser": "json",
+        },
+    )
+    code = run(
+        ["interface", "list", "--host", "sw1", "--json", "--limit", "3", "--select", "interface"]
+    )
     out = capsys.readouterr().out
     assert code == 0
     rows = json.loads(out)
@@ -123,11 +148,20 @@ def test_parsed_output_normalized_with_select_limit(capsys, monkeypatch):
 
 def test_fanout_ndjson(capsys, tmp_path, monkeypatch):
     from nxstate import client as clientmod
-    monkeypatch.setattr(clientmod.NexusClient, "run_show",
-                        lambda self, command, parse=True: {"command": command,
-                                                           "parsed": [{"host": self.host}],
-                                                           "raw": None, "parser": "json"})
-    code = run(["interface", "list", "--group", "dc", "--inventory", _inventory(tmp_path), "--json"])
+
+    monkeypatch.setattr(
+        clientmod.NexusClient,
+        "run_show",
+        lambda self, command, parse=True: {
+            "command": command,
+            "parsed": [{"host": self.host}],
+            "raw": None,
+            "parser": "json",
+        },
+    )
+    code = run(
+        ["interface", "list", "--group", "dc", "--inventory", _inventory(tmp_path), "--json"]
+    )
     lines = [json.loads(x) for x in capsys.readouterr().out.strip().splitlines()]
     assert code == 0
     assert {d["device"] for d in lines} == {"a", "b"}
@@ -153,10 +187,17 @@ def test_fanout_partial_exit(capsys, tmp_path, monkeypatch):
 def test_single_device_from_inventory_is_clean(capsys, tmp_path, monkeypatch):
     # One resolved device → normal (non-NDJSON) output, not a fan-out envelope.
     from nxstate import client as clientmod
-    monkeypatch.setattr(clientmod.NexusClient, "run_show",
-                        lambda self, command, parse=True: {"command": command,
-                                                           "parsed": [{"id": "1"}],
-                                                           "raw": None, "parser": "json"})
+
+    monkeypatch.setattr(
+        clientmod.NexusClient,
+        "run_show",
+        lambda self, command, parse=True: {
+            "command": command,
+            "parsed": [{"id": "1"}],
+            "raw": None,
+            "parser": "json",
+        },
+    )
     code = run(["vlan", "list", "--device", "a", "--inventory", _inventory(tmp_path), "--json"])
     out = capsys.readouterr().out
     assert code == 0

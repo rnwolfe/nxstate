@@ -105,10 +105,19 @@ class NexusClient:
         if not (self.username and self.password):
             raise _NxapiUnavailable("no credentials for NX-API")
         url = f"https://{self.host}:{self.port or 443}/ins"
-        payload = {"ins_api": {"version": "1.0", "type": "cli_show", "chunk": "0",
-                               "sid": "1", "input": command, "output_format": "json"}}
-        req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                     headers={"Content-Type": "application/json"})
+        payload = {
+            "ins_api": {
+                "version": "1.0",
+                "type": "cli_show",
+                "chunk": "0",
+                "sid": "1",
+                "input": command,
+                "output_format": "json",
+            }
+        }
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}
+        )
         token = base64.b64encode(f"{self.username}:{self.password}".encode()).decode()
         req.add_header("Authorization", f"Basic {token}")
         ctx = ssl._create_unverified_context() if self.insecure else None
@@ -127,11 +136,18 @@ class NexusClient:
             out = out[0] if out else {}
         code = str(out.get("code", ""))
         if code and code != "200":
-            raise AppError(ExitCode.GENERIC, "DEVICE_ERROR",
-                           out.get("msg", "device returned an error").strip(),
-                           "verify the command is valid on this platform/version")
-        return {"command": command, "parsed": out.get("body") or None, "raw": None,
-                "parser": "nxapi"}
+            raise AppError(
+                ExitCode.GENERIC,
+                "DEVICE_ERROR",
+                out.get("msg", "device returned an error").strip(),
+                "verify the command is valid on this platform/version",
+            )
+        return {
+            "command": command,
+            "parsed": out.get("body") or None,
+            "raw": None,
+            "parser": "nxapi",
+        }
 
     # ---- SSH (scrapli) ------------------------------------------------------
 
@@ -141,11 +157,17 @@ class NexusClient:
 
         if not self.username:
             raise auth_required("no username provided")
-        conn_args = dict(host=self.host, auth_username=self.username,
-                         auth_password=self.password or "", auth_strict_key=False,
-                         transport="system", port=self.port or 22,
-                         timeout_socket=self.timeout, timeout_ops=self.timeout,
-                         ssh_config_file=False)
+        conn_args = dict(
+            host=self.host,
+            auth_username=self.username,
+            auth_password=self.password or "",
+            auth_strict_key=False,
+            transport="system",
+            port=self.port or 22,
+            timeout_socket=self.timeout,
+            timeout_ops=self.timeout,
+            ssh_config_file=False,
+        )
         try:
             with NXOSDriver(**conn_args) as conn:
                 resp = conn.send_command(f"{command} | json")
@@ -153,8 +175,12 @@ class NexusClient:
                     try:
                         parsed = json.loads(resp.result)
                         if parsed:
-                            return {"command": command, "parsed": parsed, "raw": None,
-                                    "parser": "json"}
+                            return {
+                                "command": command,
+                                "parsed": parsed,
+                                "raw": None,
+                                "parser": "json",
+                            }
                     except (json.JSONDecodeError, ValueError):
                         pass
                 # `| json` failed or wasn't structured — retry the bare command.
@@ -176,8 +202,12 @@ class NexusClient:
 
 def _device_error(command: str, output: str) -> AppError:
     msg = " ".join(output.split())[:200] or "device rejected the command"
-    return AppError(ExitCode.GENERIC, "DEVICE_ERROR", f"{command!r}: {msg}",
-                    "verify the command exists on this platform/version and the feature is enabled")
+    return AppError(
+        ExitCode.GENERIC,
+        "DEVICE_ERROR",
+        f"{command!r}: {msg}",
+        "verify the command exists on this platform/version and the feature is enabled",
+    )
 
 
 def _try_genie(resp) -> object | None:

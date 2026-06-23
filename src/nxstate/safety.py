@@ -8,9 +8,30 @@ from .errors import write_refused
 
 # Anything that could change state or disrupt the box. Checked as the leading token.
 _FORBIDDEN_LEADERS = (
-    "conf", "configure", "write", "wr", "copy", "reload", "boot", "install",
-    "clear", "no", "set", "delete", "erase", "format", "reset", "shutdown",
-    "switchto", "attach", "vsh", "run", "python", "bash", "guestshell", "feature",
+    "conf",
+    "configure",
+    "write",
+    "wr",
+    "copy",
+    "reload",
+    "boot",
+    "install",
+    "clear",
+    "no",
+    "set",
+    "delete",
+    "erase",
+    "format",
+    "reset",
+    "shutdown",
+    "switchto",
+    "attach",
+    "vsh",
+    "run",
+    "python",
+    "bash",
+    "guestshell",
+    "feature",
 )
 
 

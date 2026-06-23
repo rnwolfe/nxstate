@@ -9,8 +9,15 @@ from typing import Any
 
 
 class Writer:
-    def __init__(self, fmt: str = "plain", color: bool = False, limit: int = 50,
-                 select: list[str] | None = None, stdout=None, stderr=None):
+    def __init__(
+        self,
+        fmt: str = "plain",
+        color: bool = False,
+        limit: int = 50,
+        select: list[str] | None = None,
+        stdout=None,
+        stderr=None,
+    ):
         self.fmt = fmt
         self.color = color
         self.limit = limit
@@ -38,8 +45,9 @@ class Writer:
 
     def _apply_limit(self, g: Any) -> Any:
         if self.limit > 0 and isinstance(g, list) and len(g) > self.limit:
-            self.info(f"note: output truncated to {self.limit} of {len(g)} items "
-                      f"(use --limit to change)")
+            self.info(
+                f"note: output truncated to {self.limit} of {len(g)} items (use --limit to change)"
+            )
             return g[: self.limit]
         return g
 
@@ -64,8 +72,10 @@ class Writer:
         if aligned and rows:
             widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
             for r in rows:
-                print("  ".join(c.ljust(widths[i]) for i, c in enumerate(r)).rstrip(),
-                      file=self.stdout)
+                print(
+                    "  ".join(c.ljust(widths[i]) for i, c in enumerate(r)).rstrip(),
+                    file=self.stdout,
+                )
         else:
             for r in rows:
                 print(sep.join(r), file=self.stdout)
