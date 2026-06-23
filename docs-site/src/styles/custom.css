@@ -1,0 +1,20 @@
+/* nxstate docs — design tokens. Override Starlight CSS vars; do not fork the theme. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+:root {
+  /* Network-teal accent ramp (terminal/operations feel) */
+  --sl-color-accent-low: #0b2b2e;
+  --sl-color-accent: #0ea5a5;
+  --sl-color-accent-high: #5eead4;
+
+  --sl-font: 'Inter Variable', system-ui, sans-serif;
+  --sl-font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --sl-content-width: 50rem;
+  --sl-text-5xl: 3.25rem;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent: #0b8f8f;
+}

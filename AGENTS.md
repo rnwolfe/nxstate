@@ -36,3 +36,32 @@ uv run ruff format .      # format
 ## Conventions
 - Conventional Commits; update `CHANGELOG.md` `[Unreleased]`; tests must pass offline.
 - List commands use `rt.show(..., rows=True)` so the primary table is extracted.
+
+## Documentation (keep it current — non-negotiable)
+
+Docs live in `docs-site/` — an Astro Starlight site. Content is Markdown/MDX under
+`docs-site/src/content/docs/`. The build also emits `llms.txt` / `llms-full.txt` for AI agents.
+
+- Dev: `cd docs-site && pnpm dev --host 0.0.0.0`
+- Build (regenerates `llms.txt`): `cd docs-site && pnpm build`
+
+**Docs are part of "done." A change is not complete until its docs are updated in the SAME commit/PR.**
+
+When you change any **public surface**, update the matching docs page in the same change:
+- CLI commands, flags, or output
+- Config keys, environment variables (`NXSTATE_*`), defaults
+- The inventory format, exit codes, or the output/error schema
+- Auth/transport behavior
+
+When you **add a command/feature**: add or edit the relevant `docs-site/` page before the PR is "done".
+
+When you **cut a release**:
+1. Update the changelog with user-facing changes.
+2. Bump any version references in docs.
+3. Run `cd docs-site && pnpm build` so `llms.txt` regenerates and ships with the release.
+
+**Conventions:**
+- Each docs page carries `owner` and `lastReviewed` frontmatter; refresh `lastReviewed` on
+  meaningful revisions.
+- Prefer editing an existing page over a near-duplicate; keep the sidebar spine intentional.
+- If a code change has no doc impact, say so explicitly in the PR rather than silently skipping docs.
