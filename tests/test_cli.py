@@ -11,6 +11,18 @@ def clean_env(monkeypatch):
     monkeypatch.delenv("NXSTATE_PASSWORD", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def offline(monkeypatch):
+    """Never touch the network in tests: stub the client's run_show."""
+    from nxstate import client as clientmod
+
+    def fake_run_show(self, command, parse=True):
+        return {"command": command, "parsed": None,
+                "raw": f"<stub {command} on {self.host}>", "parser": "text"}
+
+    monkeypatch.setattr(clientmod.NexusClient, "run_show", fake_run_show)
+
+
 def test_schema_has_safety_and_exit_codes(capsys):
     code = run(["schema"])
     out = capsys.readouterr().out
@@ -77,6 +89,22 @@ def test_did_you_mean(capsys):
     err = capsys.readouterr().err
     assert code == 2
     assert "did you mean" in err and "interface" in err
+
+
+def test_parsed_output_normalized_with_select_limit(capsys, monkeypatch):
+    # Parsed NX-OS TABLE_/ROW_ data is normalized to a clean array and --select/--limit apply.
+    from nxstate import client as clientmod
+    table = {"TABLE_interface": {"ROW_interface": [
+        {"interface": f"Eth1/{i}", "state": "down", "vlan": "1"} for i in range(1, 11)]}}
+    monkeypatch.setattr(clientmod.NexusClient, "run_show",
+                        lambda self, command, parse=True: {"command": command, "parsed": table,
+                                                           "raw": None, "parser": "json"})
+    code = run(["interface", "list", "--host", "sw1", "--json", "--limit", "3", "--select", "interface"])
+    out = capsys.readouterr().out
+    assert code == 0
+    rows = json.loads(out)
+    assert isinstance(rows, list) and len(rows) == 3
+    assert rows[0] == {"interface": "Eth1/1"}
 
 
 def test_flag_after_subcommand_position(capsys):

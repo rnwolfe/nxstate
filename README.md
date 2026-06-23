@@ -32,5 +32,8 @@ uv tool install nxstate         # for repeated use
 ```
 
 ## Status
-Scaffolded (contract surface + Nexus command tree complete; offline contract tests pass).
-Transport/auth/parsing pending `cli-implement`.
+Implemented and **live-verified against a Cisco DevNet Nexus 9000v sandbox** (NX-OS 10.3(8)):
+SSH (`| json`) + NX-API accelerator, structured device-error handling, `--select`/`--limit`/tsv,
+untrusted fencing, and the `WRITE_REFUSED` boundary all confirmed end-to-end. 11 offline contract
+tests pass (network stubbed). Parsing uses NX-OS `| json` + primary-table extraction; install the
+`[genie]` extra for the full ~293-parser corpus on arbitrary commands.

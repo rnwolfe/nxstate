@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import click
 
 from . import __version__
-from .client import NexusClient
+from .client import NexusClient, first_rows, normalize_nxos
 from .errors import (AppError, ExitCode, auth_required, debug_blocked, exit_table,
                      host_required, input_required, not_found)
 from .output import Writer
@@ -83,9 +83,18 @@ class Runtime:
         return self.host
 
     def _password(self) -> str | None:
+        # Resolution order (never via argv — contract §7): --password-stdin → env → OS keyring.
         if self.password_stdin:
             return sys.stdin.readline().rstrip("\n")
-        return os.environ.get("NXSTATE_PASSWORD")  # never via argv (contract §7)
+        if pw := os.environ.get("NXSTATE_PASSWORD"):
+            return pw
+        if self.host and self.username:
+            try:
+                import keyring
+                return keyring.get_password("nxstate", f"{self.username}@{self.host}")
+            except Exception:
+                return None
+        return None
 
     def client(self) -> NexusClient:
         self.require_host()
@@ -93,19 +102,25 @@ class Runtime:
                            port=self.port, transport=self.transport, timeout=self.timeout,
                            insecure=self.insecure)
 
-    def emit_result(self, command: str, parsed, raw, parser: str) -> None:
-        """Emit a show result: parsed JSON when available, else fenced untrusted raw text."""
-        if self.fmt == "json":
-            self.out.emit_json({"command": command, "parser": parser, "parsed": parsed,
-                                "raw": raw, "untrusted": raw is not None})
-        elif parsed is not None:
-            self.out.emit(parsed)
+    def emit_result(self, command: str, parsed, raw, parser: str, rows: bool = False) -> None:
+        """Emit a show result. Parsed/structured data goes through the Writer so
+        --select/--limit/--format apply. List-style commands extract the primary ROW_ table
+        (rows=True); others normalize NX-OS TABLE_/ROW_ wrappers in place. Raw free text is
+        fenced as untrusted (contract §8)."""
+        if parsed is not None:
+            self.out.emit(first_rows(parsed) if rows else normalize_nxos(parsed))
         elif raw is not None:
-            print(fence(raw), file=self.out.stdout)
+            if self.fmt == "json":
+                self.out.emit_json({"command": command, "parser": parser, "raw": raw,
+                                    "untrusted": True})
+            else:
+                print(fence(raw), file=self.out.stdout)
+        else:
+            self.out.emit({"command": command, "parser": parser, "result": None})
 
-    def show(self, command: str) -> None:
+    def show(self, command: str, rows: bool = False) -> None:
         r = self.client().run_show(command)
-        self.emit_result(r["command"], r.get("parsed"), r.get("raw"), r.get("parser", "none"))
+        self.emit_result(r["command"], r.get("parsed"), r.get("raw"), r.get("parser", "none"), rows)
 
 
 def _resolve(ctx) -> dict:
@@ -197,7 +212,7 @@ def interface():
 @click.pass_context
 def interface_list(ctx, **_):
     """show interface brief"""
-    make_runtime(ctx).show("show interface brief")
+    make_runtime(ctx).show("show interface brief", rows=True)
 
 
 @interface.command("show")
@@ -206,7 +221,7 @@ def interface_list(ctx, **_):
 @click.pass_context
 def interface_show(ctx, name, **_):
     """show interface <name>"""
-    make_runtime(ctx).show(f"show interface {name}")
+    make_runtime(ctx).show(f"show interface {name}", rows=True)
 
 
 @interface.command("counters")
@@ -216,7 +231,7 @@ def interface_show(ctx, name, **_):
 def interface_counters(ctx, name, **_):
     """show interface [<name>] counters"""
     cmd = f"show interface {name} counters" if name else "show interface counters"
-    make_runtime(ctx).show(cmd)
+    make_runtime(ctx).show(cmd, rows=True)
 
 
 @cli.group()
@@ -229,7 +244,7 @@ def vlan():
 @click.pass_context
 def vlan_list(ctx, **_):
     """show vlan"""
-    make_runtime(ctx).show("show vlan")
+    make_runtime(ctx).show("show vlan", rows=True)
 
 
 @cli.group()
@@ -243,7 +258,7 @@ def route():
 @click.pass_context
 def route_list(ctx, vrf, **_):
     """show ip route [vrf <vrf>]"""
-    make_runtime(ctx).show(f"show ip route vrf {vrf}" if vrf else "show ip route")
+    make_runtime(ctx).show(f"show ip route vrf {vrf}" if vrf else "show ip route", rows=True)
 
 
 @cli.group()
@@ -257,7 +272,7 @@ def bgp():
 @click.pass_context
 def bgp_summary(ctx, vrf, **_):
     """show ip bgp summary [vrf <vrf>]"""
-    make_runtime(ctx).show(f"show ip bgp summary vrf {vrf}" if vrf else "show ip bgp summary")
+    make_runtime(ctx).show(f"show ip bgp summary vrf {vrf}" if vrf else "show ip bgp summary", rows=True)
 
 
 @cli.group()
@@ -271,7 +286,7 @@ def neighbor():
 @click.pass_context
 def neighbor_list(ctx, protocol, **_):
     """show {cdp|lldp} neighbors"""
-    make_runtime(ctx).show(f"show {protocol} neighbors")
+    make_runtime(ctx).show(f"show {protocol} neighbors", rows=True)
 
 
 @cli.group()
@@ -284,7 +299,7 @@ def mac():
 @click.pass_context
 def mac_list(ctx, **_):
     """show mac address-table"""
-    make_runtime(ctx).show("show mac address-table")
+    make_runtime(ctx).show("show mac address-table", rows=True)
 
 
 @cli.group()
@@ -297,7 +312,7 @@ def arp():
 @click.pass_context
 def arp_list(ctx, **_):
     """show ip arp"""
-    make_runtime(ctx).show("show ip arp")
+    make_runtime(ctx).show("show ip arp", rows=True)
 
 
 @cli.command("logging")
@@ -370,9 +385,24 @@ def auth_status(ctx, **_):
 @global_options
 @click.pass_context
 def auth_login(ctx, **_):
-    """Store credentials for the target in the OS keyring (wired by cli-implement)."""
+    """Store the target's password in the OS keyring (keyed by user@host)."""
     rt = make_runtime(ctx)
-    rt.out.emit({"ok": False, "note": "TODO(cli-implement): keyring credential storage"})
+    rt.require_host()
+    if not rt.username:
+        raise input_required("--username")
+    pw = rt._password()
+    if not pw:
+        if rt.no_input:
+            raise input_required("password (set NXSTATE_PASSWORD or --password-stdin)")
+        import getpass
+        pw = getpass.getpass("NX-OS password: ")
+    try:
+        import keyring
+        keyring.set_password("nxstate", f"{rt.username}@{rt.host}", pw)
+    except Exception as e:
+        raise AppError(ExitCode.CONFIG, "KEYRING_UNAVAILABLE", f"could not store credential: {e}",
+                       "use NXSTATE_PASSWORD / --password-stdin instead, or install a keyring backend")
+    rt.out.emit({"ok": True, "stored_for": f"{rt.username}@{rt.host}"})
 
 
 @cli.command()
@@ -382,15 +412,25 @@ def doctor(ctx, **_):
     """Diagnose reachability, transport, and credentials for the target."""
     rt = make_runtime(ctx)
     host_ok = bool(rt.host)
-    cred_ok = bool(rt.password_stdin or os.environ.get("NXSTATE_PASSWORD") or rt.username)
+    cred_ok = bool(rt.username and rt._password())
     checks = [
         {"name": "host", "ok": host_ok, "detail": rt.host or "no --host provided"},
         {"name": "credentials", "ok": cred_ok,
-         "detail": "present" if cred_ok else "set --username + NXSTATE_PASSWORD"},
-        {"name": "transport-probe", "ok": False,
-         "detail": "TODO(cli-implement): probe NX-API/SSH reachability"},
+         "detail": "present" if cred_ok else "set --username + NXSTATE_PASSWORD (or nxstate auth login)"},
     ]
-    rt.out.emit({"ok": all(c["ok"] for c in checks), "checks": checks})
+    if host_ok and cred_ok:
+        try:
+            ok, detail = rt.client().reachable()
+        except AppError as e:
+            ok, detail = False, e.message
+        checks.append({"name": f"reachable ({rt.transport})", "ok": ok, "detail": detail})
+    else:
+        checks.append({"name": "reachable", "ok": False, "detail": "skipped (need host + credentials)"})
+
+    all_ok = all(c["ok"] for c in checks)
+    rt.out.emit({"ok": all_ok, "checks": checks})
+    if not all_ok:
+        raise click.exceptions.Exit(ExitCode.UNREACHABLE)
 
 
 @cli.command()
