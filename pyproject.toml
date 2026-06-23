@@ -1,6 +1,6 @@
 [project]
 name = "nxstate"
-version = "0.0.1"
+version = "0.1.0"
 description = "Agent-friendly, read-only Cisco Nexus (NX-OS) state-gathering CLI."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,6 +45,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nxstate"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/nxstate", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE", "pyproject.toml"]
 
 [tool.ruff]
 line-length = 100

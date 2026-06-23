@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-23
+
 ### Added
 - Read-only Cisco Nexus (NX-OS) state-gathering CLI: `system`, `interface`, `vlan`, `route`,
   `bgp`, `neighbor`, `mac`, `arp`, `logging`, plus a generic `show` passthrough and gated
@@ -20,4 +22,5 @@ All notable changes to this project are documented here. The format is based on
 - Credential resolution: flag → inventory → env → default; password via stdin/env/keyring
   (never argv); keyring storage via `auth login` / removal via `auth logout`; `doctor`.
 
-[Unreleased]: https://github.com/rnwolfe/nxstate/commits/main
+[Unreleased]: https://github.com/rnwolfe/nxstate/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/rnwolfe/nxstate/releases/tag/v0.1.0
