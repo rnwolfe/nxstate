@@ -1,38 +1,37 @@
-# VHS tape for the README hero GIF. Render with: vhs demo/nxstate.tape
-# https://github.com/charmbracelet/vhs  (committed as source so the GIF can be regenerated in CI)
+# VHS tape for the README hero GIF.  Render with:  vhs demo/nxstate.tape
+# https://github.com/charmbracelet/vhs
 #
-# These commands run WITHOUT a real device — they showcase the read-only-by-design safety
-# surface (help, schema, the WRITE_REFUSED boundary), so the demo is deterministic.
+# Credential-free by design: the live commands read the target + creds from the environment
+# (NXSTATE_HOST, NXSTATE_USERNAME, NXSTATE_PASSWORD, NXSTATE_TRANSPORT) so this file contains
+# no secrets and no hostname. To regenerate against a switch:
+#   export NXSTATE_HOST=... NXSTATE_USERNAME=... NXSTATE_PASSWORD=... NXSTATE_TRANSPORT=ssh
+#   vhs demo/nxstate.tape
 
 Output demo/nxstate.gif
 Set FontSize 18
-Set Width 1100
-Set Height 700
+Set Width 1200
+Set Height 800
 Set Padding 18
 Set Theme "Catppuccin Mocha"
 
-Type "# nxstate — read-only Cisco Nexus state, built for agents"
+Type "# nxstate — read-only Cisco Nexus state, live against a Nexus 9000v"
 Enter
-Sleep 1s
+Sleep 1.5s
 
-Type "nxstate --help | head -n 20"
+Type "nxstate system version --json --select nxos_ver_str,chassis_id"
 Enter
-Sleep 2.5s
+Sleep 7s
 
-Type "# Self-describing: machine-readable schema + safety state"
+Type "nxstate interface list --format tsv --limit 5 --select interface,state,vlan"
 Enter
+Sleep 7s
+
+Type "# Structured, projectable, bounded — clean for an agent. And it CANNOT configure:"
+Enter
+Type "nxstate show 'configure terminal'; echo exit=$?"
+Enter
+Sleep 3.5s
+
 Type "nxstate schema | jq '{tool, read_only, safety}'"
 Enter
-Sleep 2.5s
-
-Type "# It physically cannot configure a switch:"
-Enter
-Type "nxstate show 'configure terminal' --host sw1 --json; echo exit=$?"
-Enter
-Sleep 3s
-
-Type "# Self-describing usage guide, embedded in the tool:"
-Enter
-Type "nxstate agent | head -n 12"
-Enter
-Sleep 3s
+Sleep 3.5s
