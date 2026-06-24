@@ -10,7 +10,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/nxstate.svg)](https://pypi.org/project/nxstate/)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Docs](https://img.shields.io/badge/docs-rnwolfe.github.io%2Fnxstate-0ea5a5)](https://rnwolfe.github.io/nxstate/)
-[![Agent CLI Guidelines: Full](https://aclig.dev/badge/agent-cli-guidelines-full.svg)](https://aclig.dev/conformance/)
+[![Agent CLI Guidelines: Full](https://aclig.dev/badge/agent-cli-guidelines-full.svg?v=2)](https://aclig.dev/conformance/)
 
 📖 **Documentation: <https://rnwolfe.github.io/nxstate/>**
 
