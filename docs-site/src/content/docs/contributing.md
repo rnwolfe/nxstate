@@ -280,8 +280,7 @@ git commit -s -m "feat: add widget list"
 ```
 
 This appends a `Signed-off-by` trailer confirming that you have the right to contribute
-the code and that it will be licensed under `MIT OR Apache-2.0` (both options, as declared
-in `pyproject.toml`).
+the code and that it will be licensed under the **MIT License** (as declared in `pyproject.toml`).
 
 ---
 

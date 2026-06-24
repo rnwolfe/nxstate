@@ -37,7 +37,7 @@ NX-OS sandbox); never commit credentials — pass them via `NXSTATE_PASSWORD`.
 - Use **Conventional Commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`…).
 - One logical change per PR; include tests and update docs/`CHANGELOG.md` (`[Unreleased]`).
 - CI (lint + tests on supported Python versions) must be green.
-- By contributing you agree your work is licensed under `MIT OR Apache-2.0`. We use the
+- By contributing you agree your work is licensed under the MIT License. We use the
   [DCO](https://developercertificate.org/) — sign commits with `git commit -s`. No CLA.
 
 ## Reporting bugs / security
