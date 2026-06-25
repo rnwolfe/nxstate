@@ -10,14 +10,16 @@ requires **Python 3.10 or later** and runs on any OS that supports its dependenc
 
 ## Choose an install method
 
-Four paths cover virtually every workflow:
+These paths cover virtually every workflow. `uvx` is the recommended way to start.
 
 | Goal | Command |
 |---|---|
-| Try nxstate with zero install | `uvx nxstate --help` |
+| Try nxstate with zero install (recommended) | `uvx nxstate --help` |
 | Install for repeated daily use | `uv tool install nxstate` |
-| Install with maximum parser coverage | `uv tool install "nxstate[genie]"` |
+| Isolated permanent install with pipx | `pipx install nxstate` |
 | Install with pip (any virtualenv) | `pip install nxstate` |
+| Install with maximum parser coverage | `uv tool install "nxstate[genie]"` |
+| Grab the wheel/sdist directly | [GitHub Releases](https://github.com/rnwolfe/nxstate/releases) |
 
 ### Zero-install trial with `uvx`
 
@@ -50,6 +52,15 @@ directory is not on your `PATH` yet, uv will tell you and you can add it once:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+### Isolated install with pipx
+
+[pipx](https://pipx.pypa.io/) installs nxstate into its own isolated environment while
+still putting the `nxstate` binary on your PATH — a good choice if you don't use uv:
+
+```bash
+pipx install nxstate
+```
+
 ### Install with pip
 
 If you prefer pip or are working inside a virtualenv:
@@ -60,6 +71,16 @@ pip install nxstate
 
 Inside a virtualenv the binary is placed in the environment's `bin/` directory
 automatically.
+
+### Download the release artifacts directly
+
+Every tagged release publishes a built wheel (`.whl`), an sdist (`.tar.gz`), and a
+`SHA256SUMS` file on the [GitHub Releases page](https://github.com/rnwolfe/nxstate/releases).
+You can install a specific downloaded artifact with pip if you'd rather pin to a file:
+
+```bash
+pip install ./nxstate-0.2.0-py3-none-any.whl
+```
 
 ## Parsing pipeline and the optional `[genie]` extra
 

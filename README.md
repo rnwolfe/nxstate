@@ -36,12 +36,18 @@
 
 ## Install
 
+Published to [PyPI](https://pypi.org/project/nxstate/); `uvx` is the fastest way to start.
+
 | Method | Command |
 |---|---|
-| Zero-install trial | `uvx nxstate --help` |
-| For repeated use | `uv tool install nxstate` |
+| uv — zero-install trial (recommended) | `uvx nxstate --help` |
+| uv — persistent install | `uv tool install nxstate` |
+| pipx — isolated install | `pipx install nxstate` |
 | pip | `pip install nxstate` |
 | Max parser coverage | `uv tool install "nxstate[genie]"` (adds Genie's ~293 NX-OS parsers) |
+| Prebuilt artifacts | wheel + sdist on the [GitHub Releases page](https://github.com/rnwolfe/nxstate/releases) |
+
+Requires Python 3.10 or later.
 
 ## Quickstart
 

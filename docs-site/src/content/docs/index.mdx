@@ -89,19 +89,26 @@ Example fan-out NDJSON (one line per device as it completes):
 
 ## Install
 
+nxstate is a Python package on [PyPI](https://pypi.org/project/nxstate/). Pick whichever fits your workflow — `uvx` is the fastest way to start.
+
 ```bash
-# Zero-install trial — runs straight from PyPI, nothing to uninstall
-uvx nxstate --help
+# uv (recommended) — run with zero install, or install persistently
+uvx nxstate --help          # zero-install: runs straight from PyPI, nothing left behind
+uv tool install nxstate     # persistent: puts the `nxstate` binary on your PATH
 
-# For repeated use — installs the `nxstate` binary
-uv tool install nxstate
+# pipx — isolated permanent install
+pipx install nxstate
 
-# Standard pip
+# pip — into the current environment / virtualenv
 pip install nxstate
 
-# Maximum parser coverage — adds Genie's ~293 NX-OS parsers
+# Maximum parser coverage — adds Genie's ~293 NX-OS parsers (works with any method above)
+uvx "nxstate[genie]" --help
 uv tool install "nxstate[genie]"
+pipx install "nxstate[genie]"
 ```
+
+Prefer to grab the artifacts directly? Every tagged version ships a wheel and sdist on the [GitHub Releases page](https://github.com/rnwolfe/nxstate/releases).
 
 Requires Python 3.10 or later. Licensed under the MIT License.
 
