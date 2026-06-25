@@ -10,9 +10,12 @@
 [![Python](https://img.shields.io/pypi/pyversions/nxstate.svg)](https://pypi.org/project/nxstate/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 [![Docs](https://img.shields.io/badge/docs-rnwolfe.github.io%2Fnxstate-0ea5a5)](https://rnwolfe.github.io/nxstate/)
-[![Agent CLI Guidelines: Full](https://aclig.dev/badge/agent-cli-guidelines-full.svg?v=2)](https://aclig.dev/conformance/)
+[![Agent CLI Guidelines: v0.4.0 Full](https://aclig.dev/badge/agent-cli-guidelines-full.svg?v=2)](https://aclig.dev/conformance/)
 
 📖 **Documentation: <https://rnwolfe.github.io/nxstate/>**
+
+> Conforms to the [Agent CLI Guidelines](https://aclig.dev/conformance/) **v0.4.0** at the
+> **Full** level — verify from the binary with `nxstate schema | jq .conformance`.
 
 ![nxstate demo](demo/nxstate.gif)
 

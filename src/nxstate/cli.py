@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import click
 
-from . import __version__
+from . import SPEC, __version__
 from .client import NexusClient, first_rows, normalize_nxos
 from .errors import AppError, ExitCode, debug_blocked, exit_table, host_required, input_required
 from .inventory import Target, load_inventory
@@ -747,6 +747,7 @@ def schema(ctx, **_):
         {
             "tool": "nxstate",
             "version": __version__,
+            "conformance": {"spec": "agent-cli-guidelines", "version": SPEC, "level": "Full"},
             "read_only": True,
             "commands": info,
             "exit_codes": exit_table(),
@@ -769,12 +770,94 @@ def agent(ctx, **_):
     make_runtime(ctx).out.stdout.write(skill_content())
 
 
+_DEFAULT_RELEASES_URL = "https://pypi.org/pypi/nxstate/json"
+
+
+def _safe_release_url(raw: str | None) -> str:
+    """Resolve the release-source URL, constraining the scheme to defend against SSRF /
+    local-file reads via a misconfigured NXSTATE_RELEASES_URL.
+
+    Allowed: https everywhere; http ONLY for localhost / 127.0.0.1 / ::1 (so tests can point
+    at a local stub server). Anything else (file://, ftp://, http to a remote host, …) is
+    ignored and we fall back to the official PyPI JSON API.
+    """
+    import urllib.parse
+
+    if not raw:
+        return _DEFAULT_RELEASES_URL
+    p = urllib.parse.urlparse(raw)
+    if p.scheme == "https":
+        return raw
+    if p.scheme == "http" and (p.hostname or "").lower() in ("localhost", "127.0.0.1", "::1"):
+        return raw
+    return _DEFAULT_RELEASES_URL
+
+
+def _latest_release() -> tuple[str | None, str]:
+    """(latest version on PyPI or None, upgrade command). Network, short timeout, **fail-silent**.
+
+    Release source overridable via NXSTATE_RELEASES_URL (tests). Defaults to the official PyPI
+    JSON API — a structured, versioned endpoint, so no backpressure handling is needed. The
+    override is scheme-constrained (see _safe_release_url): only https, or http to localhost.
+    """
+    import json as _json
+    import os
+    import urllib.request
+
+    upgrade = "uv tool install --upgrade nxstate"
+    url = _safe_release_url(os.environ.get("NXSTATE_RELEASES_URL"))
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                # Some registries (and GitHub) reject requests with no UA.
+                "User-Agent": "nxstate-version-check",
+            },
+        )
+        # nosec B310 / noqa: S310 — scheme constrained to https (or http→localhost) above.
+        with urllib.request.urlopen(req, timeout=3) as r:  # noqa: S310
+            data = _json.load(r)
+        return (data.get("info", {}).get("version") or None), upgrade
+    except Exception:
+        return None, upgrade
+
+
+def _update_available(latest: str | None, current: str) -> bool:
+    """Dev/source builds never report an update — don't nag them."""
+    if not latest or not current or current == "dev":
+        return False
+    return latest.lstrip("v") != current.lstrip("v")
+
+
 @cli.command()
+@click.option(
+    "--check",
+    is_flag=True,
+    help="Check PyPI for a newer release (network, short timeout, fail-silent).",
+)
 @global_options
 @click.pass_context
-def version(ctx, **_):
-    """Print the version."""
-    make_runtime(ctx).out.emit({"version": __version__})
+def version(ctx, check, **_):
+    """Print the version, or with --check report whether a newer release exists.
+
+    Update awareness, never self-mutation: the tool never auto-updates; it only reports the
+    upgrade command for the human / package manager.
+    """
+    rt = make_runtime(ctx)
+    if not check:
+        rt.out.emit({"version": __version__})
+        return
+    latest, upgrade = _latest_release()
+    out = {
+        "current": __version__,
+        "latest": latest,
+        "updateAvailable": _update_available(latest, __version__),
+        "upgrade": upgrade,
+    }
+    if latest is None:
+        out["note"] = "could not check for updates"
+    rt.out.emit(out)
 
 
 # --- entry / exit mapping -------------------------------------------------------------------

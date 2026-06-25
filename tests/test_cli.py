@@ -210,6 +210,73 @@ def test_flag_after_subcommand_position(capsys):
     assert code == 0
 
 
+def test_schema_declares_conformance(capsys):
+    code = run(["schema"])
+    out = capsys.readouterr().out
+    assert code == 0
+    conf = json.loads(out)["conformance"]
+    assert conf == {"spec": "agent-cli-guidelines", "version": "0.4.0", "level": "Full"}
+
+
+def test_version_check(capsys, monkeypatch):
+    # Spin up a local stub of the PyPI JSON API on 127.0.0.1 and point the override at it.
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 (BaseHTTPRequestHandler API)
+            body = json.dumps({"info": {"version": "999.0.0"}}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):  # silence the stub server
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        host, port = srv.server_address
+        monkeypatch.setenv("NXSTATE_RELEASES_URL", f"http://{host}:{port}/pypi/nxstate/json")
+        code = run(["version", "--check", "--json"])
+        out = json.loads(capsys.readouterr().out)
+    finally:
+        srv.shutdown()
+    assert code == 0
+    assert out["current"]
+    assert out["latest"] == "999.0.0"
+    assert out["updateAvailable"] is True  # current != 999.0.0
+    assert "upgrade" in out
+
+
+def test_version_check_fail_silent(capsys, monkeypatch):
+    # Unreachable URL → fail-silent: structured payload, exit 0, no update claimed.
+    monkeypatch.setenv("NXSTATE_RELEASES_URL", "http://127.0.0.1:0")
+    code = run(["version", "--check", "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert out["latest"] is None
+    assert out["updateAvailable"] is False
+    assert out["note"] == "could not check for updates"
+
+
+def test_version_check_rejects_unsafe_scheme(monkeypatch):
+    # SSRF / local-file guard: file:// (and remote http) are ignored → default PyPI URL.
+    from nxstate.cli import _DEFAULT_RELEASES_URL, _safe_release_url
+
+    monkeypatch.setenv("NXSTATE_RELEASES_URL", "file:///etc/passwd")
+    assert _safe_release_url("file:///etc/passwd") == _DEFAULT_RELEASES_URL
+    assert _safe_release_url("http://evil.example.com/x") == _DEFAULT_RELEASES_URL
+    assert _safe_release_url("ftp://example.com/x") == _DEFAULT_RELEASES_URL
+    # Allowed: https anywhere, http only to localhost.
+    assert _safe_release_url("https://example.com/x") == "https://example.com/x"
+    assert _safe_release_url("http://127.0.0.1:8080/x") == "http://127.0.0.1:8080/x"
+    assert _safe_release_url("http://localhost:8080/x") == "http://localhost:8080/x"
+    assert _safe_release_url(None) == _DEFAULT_RELEASES_URL
+
+
 def test_auth_logout_no_entry(capsys, monkeypatch):
     import keyring
 

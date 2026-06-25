@@ -2,7 +2,7 @@
 title: Environment variables
 description: Every NXSTATE_* variable nxstate reads, with their resolution order and security guidance.
 owner: rnwolfe
-lastReviewed: 2026-06-23
+lastReviewed: 2026-06-25
 ---
 
 nxstate reads a small set of environment variables so credentials and connection defaults can
@@ -159,6 +159,31 @@ nxstate interface list --host 10.0.0.1 --username network-operator
 
 Color is only applied to `--format plain` output on a TTY. JSON and TSV output is never
 colored, regardless of this variable.
+
+---
+
+## Release-check variable
+
+### `NXSTATE_RELEASES_URL`
+
+Overrides the URL [`nxstate version --check`](/reference/commands/#version---check) queries
+for the latest release. Defaults to the official PyPI JSON API,
+`https://pypi.org/pypi/nxstate/json`. Primarily for tests, which point it at a local stub
+server.
+
+For safety the scheme is **constrained** to defend against SSRF / local-file reads from a
+misconfigured environment:
+
+- `https://…` is allowed to any host.
+- `http://…` is allowed **only** for `localhost`, `127.0.0.1`, or `::1`.
+- Any other scheme (`file://`, `ftp://`, …) or a remote `http://` URL is **ignored**, and
+  nxstate silently falls back to the default PyPI URL.
+
+```bash
+# Local stub for tests
+export NXSTATE_RELEASES_URL=http://127.0.0.1:8080/pypi/nxstate/json
+nxstate version --check --json
+```
 
 ---
 
