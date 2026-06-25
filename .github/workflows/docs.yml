@@ -22,6 +22,8 @@ jobs:
         with:
           fetch-depth: 0 # full history so Starlight `lastUpdated` git dates are correct
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10.27.0 # explicit: packageManager lives in docs-site/, not repo root
       - uses: actions/setup-node@v4
         with:
           node-version: 22
