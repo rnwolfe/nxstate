@@ -2,7 +2,7 @@
 title: Command reference
 description: Exhaustive noun-verb command tree for nxstate — every subcommand, its arguments, the underlying NX-OS show it maps to, and whether it returns an array or an object.
 owner: rnwolfe
-lastReviewed: 2026-06-23
+lastReviewed: 2026-06-25
 ---
 
 nxstate is a **read-only** CLI. Every command gathers state — none of them can configure a
@@ -438,6 +438,11 @@ Emits a JSON document — no switch connection required:
 {
   "tool": "nxstate",
   "version": "x.y.z",
+  "conformance": {
+    "spec": "agent-cli-guidelines",
+    "version": "0.4.0",
+    "level": "Full"
+  },
   "read_only": true,
   "commands": { ... },
   "exit_codes": { ... },
@@ -455,6 +460,15 @@ Emits a JSON document — no switch connection required:
 all subcommands and their options. `exit_codes` is the complete name→integer table.
 Useful for agents bootstrapping their understanding of the tool; combine with
 `nxstate agent` for the intent-level SKILL document.
+
+The `conformance` block is the machine-readable declaration that nxstate implements the
+[Agent CLI Guidelines](https://rnwolfe.github.io/agent-cli-guidelines/) at the stated
+`version` and `level`. An agent can read it directly:
+
+```bash
+nxstate schema | jq .conformance
+# {"spec":"agent-cli-guidelines","version":"0.4.0","level":"Full"}
+```
 
 ---
 
@@ -481,6 +495,36 @@ Prints `{"version": "x.y.z"}`. Use `--json` if you need stable machine-readable 
 ```bash
 nxstate version --json
 ```
+
+### `version --check`
+
+Reports whether a newer release is available, without ever self-updating — nxstate only
+tells you the upgrade command; the human or package manager runs it.
+
+```bash
+nxstate version --check --json
+```
+
+```json
+{
+  "current": "0.4.0",
+  "latest": "0.5.0",
+  "updateAvailable": true,
+  "upgrade": "uv tool install --upgrade nxstate"
+}
+```
+
+The check queries the official [PyPI JSON API](https://pypi.org/pypi/nxstate/json) with a
+short (3s) timeout and is **fail-silent**: if the network is unavailable or the lookup
+fails, it returns `"latest": null`, `"updateAvailable": false`, and a
+`"note": "could not check for updates"` — it never errors or blocks an agent loop, and it
+exits `0`. Source/dev builds (`current` of `"dev"`) never report an update.
+
+The release source can be overridden with the `NXSTATE_RELEASES_URL` environment variable
+(used in tests). For safety the override scheme is constrained — only `https`, or `http`
+to `localhost`/`127.0.0.1`/`::1`; any other scheme (e.g. `file://`) or a remote `http`
+URL is ignored and the default PyPI URL is used instead. See
+[Environment variables](/reference/environment-variables/).
 
 ---
 
@@ -510,6 +554,7 @@ nxstate version --json
 | `schema` | object |
 | `agent` | plain text (SKILL.md) |
 | `version` | object |
+| `version --check` | object (`current`, `latest`, `updateAvailable`, `upgrade`) |
 
 ---
 

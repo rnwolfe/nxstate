@@ -770,21 +770,53 @@ def agent(ctx, **_):
     make_runtime(ctx).out.stdout.write(skill_content())
 
 
+_DEFAULT_RELEASES_URL = "https://pypi.org/pypi/nxstate/json"
+
+
+def _safe_release_url(raw: str | None) -> str:
+    """Resolve the release-source URL, constraining the scheme to defend against SSRF /
+    local-file reads via a misconfigured NXSTATE_RELEASES_URL.
+
+    Allowed: https everywhere; http ONLY for localhost / 127.0.0.1 / ::1 (so tests can point
+    at a local stub server). Anything else (file://, ftp://, http to a remote host, …) is
+    ignored and we fall back to the official PyPI JSON API.
+    """
+    import urllib.parse
+
+    if not raw:
+        return _DEFAULT_RELEASES_URL
+    p = urllib.parse.urlparse(raw)
+    if p.scheme == "https":
+        return raw
+    if p.scheme == "http" and (p.hostname or "").lower() in ("localhost", "127.0.0.1", "::1"):
+        return raw
+    return _DEFAULT_RELEASES_URL
+
+
 def _latest_release() -> tuple[str | None, str]:
     """(latest version on PyPI or None, upgrade command). Network, short timeout, **fail-silent**.
 
     Release source overridable via NXSTATE_RELEASES_URL (tests). Defaults to the official PyPI
-    JSON API — a structured, versioned endpoint, so no backpressure handling is needed.
+    JSON API — a structured, versioned endpoint, so no backpressure handling is needed. The
+    override is scheme-constrained (see _safe_release_url): only https, or http to localhost.
     """
     import json as _json
     import os
     import urllib.request
 
     upgrade = "uv tool install --upgrade nxstate"
-    url = os.environ.get("NXSTATE_RELEASES_URL", "https://pypi.org/pypi/nxstate/json")
+    url = _safe_release_url(os.environ.get("NXSTATE_RELEASES_URL"))
     try:
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=3) as r:  # noqa: S310 (https only)
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                # Some registries (and GitHub) reject requests with no UA.
+                "User-Agent": "nxstate-version-check",
+            },
+        )
+        # nosec B310 / noqa: S310 — scheme constrained to https (or http→localhost) above.
+        with urllib.request.urlopen(req, timeout=3) as r:  # noqa: S310
             data = _json.load(r)
         return (data.get("info", {}).get("version") or None), upgrade
     except Exception:
